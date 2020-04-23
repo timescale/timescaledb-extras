@@ -6,7 +6,7 @@
 
 
 ---- Some helper functions and procedures before the main event
-CREATE OR REPLACE FUNCTION get_schema_and_table_name(regclass) RETURNS table(nspname name, relname name) AS $$
+CREATE OR REPLACE FUNCTION get_schema_and_table_name(IN regclass, OUT nspname name, OUT relname name) AS $$
     SELECT n.nspname, c.relname  
     FROM pg_class c INNER JOIN pg_namespace n ON c.relnamespace = n.oid 
     WHERE c.oid = $1::oid
@@ -27,7 +27,7 @@ BEGIN
         AND NOT c.dropped
     LOOP 
         RAISE NOTICE 'Decompressing chunk: %.%', chunk_row.schema_name, chunk_row.table_name;
-        PERFORM decompress_chunk(format('%s.%s', chunk_row.schema_name, chunk_row.table_name)::regclass);
+        PERFORM decompress_chunk(format('%I.%I', chunk_row.schema_name, chunk_row.table_name)::regclass);
         -- Actually got a chunk decompressed, so we'll set this to true now. We only want to recompress chunks in slices that were already compressed.
         chunks_decompressed = true;
         COMMIT;
@@ -49,7 +49,7 @@ BEGIN
         AND NOT c.dropped
     LOOP 
         RAISE NOTICE 'Compressing chunk: %.%', chunk_row.schema_name, chunk_row.table_name;
-        PERFORM compress_chunk(format('%s.%s', chunk_row.schema_name, chunk_row.table_name)::regclass);
+        PERFORM compress_chunk(format('%I.%I', chunk_row.schema_name, chunk_row.table_name)::regclass);
         COMMIT;
     END LOOP;
 END;
@@ -79,7 +79,7 @@ CREATE OR REPLACE PROCEDURE decompress_backfill(staging_table regclass,
     compression_job_push_interval interval DEFAULT '1 day')
 AS $proc$
 DECLARE
-    source text := staging_table::text;
+    source text := staging_table::text; -- Forms a properly quoted table name from our regclass
     dest   text := destination_hypertable::text;
     
     dest_nspname name;
@@ -121,18 +121,20 @@ BEGIN
     SELECT move_compression_job(hypertable_row.id, now() + compression_job_push_interval) INTO old_compression_job_time;
 
     --Get the min and max times in timescale internal format from the source table, this will tell us which chunks we need to decompress
-    EXECUTE FORMAT($$SELECT _timescaledb_internal.time_to_internal(min(%1$s)) , 
-        _timescaledb_internal.time_to_internal(max(%1$s)) 
+    EXECUTE FORMAT($$SELECT _timescaledb_internal.time_to_internal(min(%1$I)) , 
+        _timescaledb_internal.time_to_internal(max(%1$I)) 
         FROM %2$s $$, dimension_row.column_name, source)
         INTO STRICT min_time_internal, max_time_internal;
     
     --Set up our move statement to be used with the right formatting in each of the loop executions
+    -- Note that the table names and literal time values are properly formatted outside and so are 
+    -- passed in as raw strings. We cannot re-format as they will then have extra quotes.
     IF delete_from_staging THEN 
         unformatted_move_stmt = $$  
             WITH to_insert AS (DELETE 
             FROM %1$s --source table
-            WHERE %2$s >= %3$s -- time column >= range start
-            AND %2$s <= %4$s -- time column <= range end
+            WHERE %2$I >= %3$s -- time column >= range start
+            AND %2$I < %4$s -- time column <= range end
             RETURNING * )
             INSERT INTO %5$s 
             SELECT * FROM to_insert
@@ -142,8 +144,8 @@ BEGIN
         unformatted_move_stmt = $$  
             WITH to_insert AS (SELECT *
             FROM %1$s --source table
-            WHERE %2$s >= %3$s -- time column >= range start
-            AND %2$s <= %4$s) -- time column <= range end)
+            WHERE %2$I >= %3$s -- time column >= range start
+            AND %2$I < %4$s) -- time column <= range end)
             INSERT INTO %5$s 
             SELECT * FROM to_insert
             %6$s -- ON CONFLICT CLAUSE if it exists
@@ -171,11 +173,11 @@ BEGIN
         r_end = _timescaledb_internal.time_literal_sql(dimension_slice_row.range_end, dimension_row.column_type);
 
         EXECUTE FORMAT(unformatted_move_stmt
-            , source -- source table name (already formatted properly)
-            , quote_ident(dimension_row.column_name) -- have to wrap our column name in quote ident
-            , r_start
+            , source 
+            , dimension_row.column_name
+            , r_start --This is already formatted as a literal from our function above, so inserted as a raw string
             , r_end
-            , dest -- dest hypertable name (already formatted properly) 
+            , dest 
             , on_conflict_clause
             );
 
