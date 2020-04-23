@@ -4,7 +4,6 @@
 -- A set of functions and procedures to help backfill data into compressed ranges
 -- All assume that whatever schema TimescaleDB is installed in, it is in the search_path at the time of run
 
-
 ---- Some helper functions and procedures before the main event
 CREATE OR REPLACE FUNCTION get_schema_and_table_name(IN regclass, OUT nspname name, OUT relname name) AS $$
     SELECT n.nspname, c.relname  
@@ -71,7 +70,11 @@ END;
 $$ LANGUAGE PLPGSQL VOLATILE;
 
 -- The main event
--- Specify your staging table from which rows will be deleted as they are moved
+-- staging_table is the (possibly temporary) table from which rows will be moved 
+-- destination_hypertable is the table where rows will be moved
+-- on_conflict_do_nothing controls whether duplicate rows are ignored
+-- delete_from_staging specifies whether we should delete from the staging table as we go or leave rows there
+-- compression_job_push_interval specifies how long push out the compression job as we are running, ie the max amount of time you expect the backfill to take
 CREATE OR REPLACE PROCEDURE decompress_backfill(staging_table regclass, 
     destination_hypertable regclass, 
     on_conflict_do_nothing bool DEFAULT true, 
