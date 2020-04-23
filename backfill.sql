@@ -1,3 +1,6 @@
+-- This file and its contents are licensed under the Timescale License.
+-- Please see the included NOTICE and LICENSE for copyright and licensing information.
+
 -- A set of functions and procedures to help backfill data into compressed ranges
 -- All assume that whatever schema TimescaleDB is installed in, it is in the search_path at the time of run
 
