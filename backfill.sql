@@ -4,6 +4,28 @@
 -- A set of functions and procedures to help backfill data into compressed ranges
 -- All assume that whatever schema TimescaleDB is installed in, it is in the search_path at the time of run
 
+/* 
+**** USING BACKFILL **** 
+*
+*The backfill procedure is useful for backfilling data into TimescaleDB
+*hypertables that have compressed chunks. To use it, first insert the data you
+*wish to backfill into a temporary (or normal) table that has the same schema as
+*the hypertable we are backfilling into. Then call the decompress_backfill
+*procedure with the staging table and hypertables. 
+*
+*As an example, suppose we have a hypertable called `cpu` we create a temporary
+* table by running something like:
+*
+*`CREATE TEMPORARY TABLE cpu_temp AS SELECT * FROM cpu WITH NO DATA;` 
+*
+*Then we can call our backfill procedure:
+*
+*` CALL decompress_backfill(staging_table=>'cpu_temp'::regclass,
+*   destination_hypertable=>'cpu'::regclass );`
+*
+*And it will backfill into the cpu hypertable. 
+*/
+
 ---- Some helper functions and procedures before the main event
 CREATE OR REPLACE FUNCTION get_schema_and_table_name(IN regclass, OUT nspname name, OUT relname name) AS $$
     SELECT n.nspname, c.relname  
