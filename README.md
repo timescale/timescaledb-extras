@@ -8,6 +8,14 @@ The current list of "extras" include:
 
 - Procedures to help backfill data into compressed ranges
 
+## Useful views
+
+In the `views/` directory, there is a number of views that can be
+useful. The views are typically added as separate files to allow you
+to just include the views that you're interested in.
+
+`chunks.sql`
+: Defines views to get information about the time ranges and tablespace for chunks.
 
 ## Documentation and Help
 
