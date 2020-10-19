@@ -14,8 +14,16 @@ In the `views/` directory, there is a number of views that can be
 useful. The views are typically added as separate files to allow you
 to just include the views that you're interested in.
 
-`chunks.sql`
+`views/chunks.sql`
 : Defines views to get information about the time ranges and tablespace for chunks.
+
+`views/missing_dimension_slices.sql`
+: Defines a view `missing_dimension_slices` to check for missing dimension slices.
+
+## Procedures
+
+`procs/repair_dimension_slice.sql`
+: Procedure `repair_dimension_slice` that will repair the `dimension_slice` table if it missing slices.
 
 ## Documentation and Help
 
