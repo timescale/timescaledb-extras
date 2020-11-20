@@ -120,8 +120,9 @@ DECLARE
     unformatted_move_stmt text ;
     on_conflict_clause text := '';
 
-    r_start text;
-    r_end text;
+    r_start text := NULL;
+    r_end text := NULL;
+    r_end_prev text := NULL;
     affected bigint;
 
     old_compression_job_time timestamptz;
@@ -189,14 +190,38 @@ BEGIN
         -- find the dimension slices that overlap with the data in our staging table 
         -- the range_ends are non inclusive, the range_starts are inclusive
         AND max_time_internal >= ds.range_start AND min_time_internal < ds.range_end
+        ORDER BY ds.range_end
     LOOP
         -- decompress the chunks in the dimension slice, committing transactions after each decompress
         CALL decompress_dimension_slice(dimension_slice_row, chunks_decompressed);
 
+
+        --Set the previous r_end, so that we can insert from the previous (or the min) to
+        --the start, this will catch any rows that are in the source table for which we
+        --haven't yet made a chunk in the dest hypertable. 
+        r_end_prev = COALESCE(r_end, _timescaledb_internal.time_literal_sql(min_time_internal, dimension_row.column_type));
         -- now actually move rows
         r_start = _timescaledb_internal.time_literal_sql(dimension_slice_row.range_start, dimension_row.column_type);
         r_end = _timescaledb_internal.time_literal_sql(dimension_slice_row.range_end, dimension_row.column_type);
+        
+        -- catch any stray rows that fall into a chunk that should be between these or
+        -- before these. We won't compress the new chunks that are created, the job will
+        -- pick those up when we re-activate it. (Mainly the previous end and current
+        -- start will be the same, so we don't need to do anything in that case)
+        IF r_end_prev != r_start THEN 
+            EXECUTE FORMAT(unformatted_move_stmt
+                , source 
+                , dimension_row.column_name
+                , r_end_prev
+                , r_start
+                , dest 
+                , on_conflict_clause
+                );
 
+            GET DIAGNOSTICS affected = ROW_COUNT;
+            RAISE NOTICE '% rows moved in range % to %', affected, r_end_prev, r_start ;
+        END IF;
+        
         EXECUTE FORMAT(unformatted_move_stmt
             , source 
             , dimension_row.column_name
@@ -205,7 +230,6 @@ BEGIN
             , dest 
             , on_conflict_clause
             );
-
         GET DIAGNOSTICS affected = ROW_COUNT;
         RAISE NOTICE '% rows moved in range % to %', affected, r_start, r_end ;
         COMMIT;
@@ -215,6 +239,22 @@ BEGIN
         END IF;
     END LOOP;
 
+    -- catch any stray rows that fall into new chunks that need to be created between our
+    -- final chunk and the max in the source table, We won't compress the new chunks that are
+    -- created, the job will pick those up when we re-activate it.
+    r_start = COALESCE(r_end, _timescaledb_internal.time_literal_sql(min_time_internal, dimension_row.column_type)); --if there were no rows inserted into a chunk, r_end wouldn't be defined.
+    r_end = _timescaledb_internal.time_literal_sql(max_time_internal+1, dimension_row.column_type); -- add one here, so that we can still use < rather than <= (our internal representation is a bigint)
+    EXECUTE FORMAT(unformatted_move_stmt
+        , source 
+        , dimension_row.column_name
+        , r_start
+        , r_end
+        , dest 
+        , on_conflict_clause
+        );
+    GET DIAGNOSTICS affected = ROW_COUNT;
+    RAISE NOTICE '% rows moved in range % to %', affected, r_start, r_end ;
+    COMMIT;
 --Move our job back to where it was
 SELECT move_compression_job(hypertable_row.id, old_compression_job_time) INTO old_compression_job_time;
 COMMIT;
