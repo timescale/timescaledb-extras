@@ -7,23 +7,26 @@
 /* 
 **** USING BACKFILL **** 
 *
-*The backfill procedure is useful for backfilling data into TimescaleDB
-*hypertables that have compressed chunks. To use it, first insert the data you
-*wish to backfill into a temporary (or normal) table that has the same schema as
-*the hypertable we are backfilling into. Then call the decompress_backfill
-*procedure with the staging table and hypertables. 
+*The backfill procedure is useful for backfilling data into TimescaleDB hypertables that
+*have compressed chunks. To use it, first insert the data you wish to backfill into a
+*temporary (or normal) table that has the same schema as the hypertable we are backfilling
+*into. Then call the decompress_backfill procedure with the staging table and hypertables.
 *
-*As an example, suppose we have a hypertable called `cpu` we create a temporary
-* table by running something like:
+*
+*As an example, suppose we have a hypertable called `cpu` we create a temporary table by
+* running something like:
 *
 *`CREATE TEMPORARY TABLE cpu_temp AS SELECT * FROM cpu WITH NO DATA;` 
 *
-*Then we can call our backfill procedure:
+* Then we can call our backfill procedure:
 *
 *` CALL decompress_backfill(staging_table=>'cpu_temp'::regclass,
 *   destination_hypertable=>'cpu'::regclass );`
 *
-*And it will backfill into the cpu hypertable. 
+* And it will backfill into the cpu hypertable. 
+*
+* We recommend creating an index on the time column of the temporary table, to make scans
+* of that table in certain ranges faster. (ie `CREATE INDEX ON cpu_temp(time);`)
 */
 
 ---- Some helper functions and procedures before the main event
@@ -204,28 +207,17 @@ BEGIN
         r_start = _timescaledb_internal.time_literal_sql(dimension_slice_row.range_start, dimension_row.column_type);
         r_end = _timescaledb_internal.time_literal_sql(dimension_slice_row.range_end, dimension_row.column_type);
         
-        -- catch any stray rows that fall into a chunk that should be between these or
-        -- before these. We won't compress the new chunks that are created, the job will
-        -- pick those up when we re-activate it. (Mainly the previous end and current
-        -- start will be the same, so we don't need to do anything in that case)
-        IF r_end_prev != r_start THEN 
-            EXECUTE FORMAT(unformatted_move_stmt
-                , source 
-                , dimension_row.column_name
-                , r_end_prev
-                , r_start
-                , dest 
-                , on_conflict_clause
-                );
+        -- catch any stray rows that fall into a chunk that doesn't exist yet by expanding
+        -- our range to the lower of r_end_prev and r_start, there is a case where r_start
+        -- can be lower, which is if r_end_prev was actually the minimum in the in the
+        -- source table.  We won't compress the new chunks that are created, the
+        -- compression job will pick those up when we re-activate it.
+        r_start =LEAST(r_end_prev, r_start);
 
-            GET DIAGNOSTICS affected = ROW_COUNT;
-            RAISE NOTICE '% rows moved in range % to %', affected, r_end_prev, r_start ;
-        END IF;
-        
         EXECUTE FORMAT(unformatted_move_stmt
             , source 
             , dimension_row.column_name
-            , r_start --This is already formatted as a literal from our function above, so inserted as a raw string
+            , r_start 
             , r_end
             , dest 
             , on_conflict_clause
