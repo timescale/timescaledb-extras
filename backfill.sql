@@ -29,6 +29,10 @@
 * of that table in certain ranges faster. (ie `CREATE INDEX ON cpu_temp(time);`)
 */
 
+---- Backfill operation enum type to define the behavior in case of conflicting rows
+DROP TYPE IF EXISTS BackfillOnConflict;
+CREATE TYPE BackfillOnConflict AS ENUM ('DoNothing', 'Update', 'Error');
+
 ---- Some helper functions and procedures before the main event
 CREATE OR REPLACE FUNCTION get_schema_and_table_name(IN regclass, OUT nspname name, OUT relname name) AS $$
     SELECT n.nspname, c.relname  
