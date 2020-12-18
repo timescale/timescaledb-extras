@@ -189,13 +189,13 @@ BEGIN
             $$;
     END IF;
 
-    IF on_conflict_action == 'DoNothing' THEN
+    IF on_conflict_action = 'DoNothing' THEN
         on_conflict_clause = 'ON CONFLICT DO NOTHING';
-    ELSEIF on_conflict_action == 'Update' THEN
+    ELSEIF on_conflict_action = 'Update' THEN
         on_conflict_clause = 'ON CONFLICT DO UPDATE SET ';
         FOR on_conflict_index IN 1 .. ARRAY_LENGTH(update_action_columns, 1) LOOP
             on_conflict_column = update_action_columns[on_conflict_index];
-            on_conflict_clause = on_conflict_clause || FORMAT('%%5$s.%1$I = to_insert.%1$I', on_conflict_column);
+            on_conflict_clause = on_conflict_clause || FORMAT('%2$s.%1$I = to_insert.%1$I', on_conflict_column, dest);
             IF on_conflict_index < ARRAY_LENGTH(update_action_columns, 1) THEN
                 on_conflict_clause = on_conflict_clause || ', ';
             END IF;
