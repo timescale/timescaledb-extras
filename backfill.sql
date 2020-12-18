@@ -191,7 +191,7 @@ BEGIN
 
     IF on_conflict_action == 'DoNothing' THEN
         on_conflict_clause = 'ON CONFLICT DO NOTHING';
-    ELSE IF on_conflict_action == 'Update' THEN
+    ELSEIF on_conflict_action == 'Update' THEN
         on_conflict_clause = 'ON CONFLICT DO UPDATE SET ';
         FOR on_conflict_index IN 1 .. ARRAY_LENGTH(update_action_columns, 1) LOOP
             on_conflict_column = update_action_columns[on_conflict_index];
