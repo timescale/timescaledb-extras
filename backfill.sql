@@ -101,14 +101,16 @@ $$ LANGUAGE PLPGSQL VOLATILE;
 -- The main event
 -- staging_table is the (possibly temporary) table from which rows will be moved 
 -- destination_hypertable is the table where rows will be moved
--- on_conflict_do_nothing controls whether duplicate rows are ignored
+-- on_conflict_action controls whether duplicate rows are being ignored (DoNothing, default), an update clause is generated based on on_conflict_columns (Update), or if the duplicate row raises an error (Error) 
 -- delete_from_staging specifies whether we should delete from the staging table as we go or leave rows there
 -- compression_job_push_interval specifies how long push out the compression job as we are running, ie the max amount of time you expect the backfill to take
+-- update_action_columns is an array of columns to use in the update clause when a conflict arises and the on_conflict_action is set to 'Update'
 CREATE OR REPLACE PROCEDURE decompress_backfill(staging_table regclass, 
     destination_hypertable regclass, 
-    on_conflict_do_nothing bool DEFAULT true, 
+    on_conflict_do_nothing BackfillOnConflict DEFAULT 'DoNothing', 
     delete_from_staging bool DEFAULT true, 
-    compression_job_push_interval interval DEFAULT '1 day')
+    compression_job_push_interval interval DEFAULT '1 day',
+    update_action_columns text[] DEFAULT '{}')
 AS $proc$
 DECLARE
     source text := staging_table::text; -- Forms a properly quoted table name from our regclass
@@ -126,6 +128,8 @@ DECLARE
     
     unformatted_move_stmt text ;
     on_conflict_clause text := '';
+    on_conflict_index integer := 0;
+    on_conflict_column text := '';
 
     r_start text := NULL;
     r_end text := NULL;
@@ -185,8 +189,17 @@ BEGIN
             $$;
     END IF;
 
-    IF on_conflict_do_nothing THEN
+    IF on_conflict_action == 'DoNothing' THEN
         on_conflict_clause = 'ON CONFLICT DO NOTHING';
+    ELSE IF on_conflict_action == 'Update' THEN
+        on_conflict_clause = 'ON CONFLICT DO UPDATE SET ';
+        FOR on_conflict_index IN 1 .. ARRAY_LENGTH(update_action_columns, 1) LOOP
+            on_conflict_column = update_action_columns[on_conflict_index];
+            on_conflict_clause = on_conflict_clause || FORMAT('%%5$s.%1$I = to_insert.%1$I', on_conflict_column);
+            IF on_conflict_index < ARRAY_LENGTH(update_action_columns, 1) THEN
+                on_conflict_clause = on_conflict_clause || ', ';
+            END IF;
+        END LOOP;
     END IF;
 
     --Loop through the dimension slices that that are impacted
