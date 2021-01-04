@@ -29,10 +29,6 @@
 * of that table in certain ranges faster. (ie `CREATE INDEX ON cpu_temp(time);`)
 */
 
----- Backfill operation enum type to define the behavior in case of conflicting rows
-DROP TYPE IF EXISTS BackfillOnConflict;
-CREATE TYPE BackfillOnConflict AS ENUM ('DoNothing', 'Update', 'Error');
-
 ---- Some helper functions and procedures before the main event
 CREATE OR REPLACE FUNCTION get_schema_and_table_name(IN regclass, OUT nspname name, OUT relname name) AS $$
     SELECT n.nspname, c.relname  
@@ -101,16 +97,19 @@ $$ LANGUAGE PLPGSQL VOLATILE;
 -- The main event
 -- staging_table is the (possibly temporary) table from which rows will be moved 
 -- destination_hypertable is the table where rows will be moved
--- on_conflict_action controls whether duplicate rows are being ignored (DoNothing, default), an update clause is generated based on on_conflict_columns (Update), or if the duplicate row raises an error (Error) 
+-- on_conflict action controls how duplicate rows are handled on insert, it has 3 allowed values that correspond to the ON CONFLICT actions in Postgres, 'NOTHING' (default), 'UPDATE', 'RESTRICT'. Their actions:
+--   - NOTHING: ignore conflicting rows, the first inserted takes precedence
+--   - UPDATE: replace values in the conflicting row according to the *on_conflict_update_columns parameter*, if this is set, the *on_conflict_update_columns* parameter must be set
+--   - RESTRICT: error if there is a conflicting insert
 -- delete_from_staging specifies whether we should delete from the staging table as we go or leave rows there
 -- compression_job_push_interval specifies how long push out the compression job as we are running, ie the max amount of time you expect the backfill to take
--- update_action_columns is an array of columns to use in the update clause when a conflict arises and the on_conflict_action is set to 'Update'
+-- on_conflict_update_columns is an array of columns to use in the update clause when a conflict arises and the on_conflict_action is set to 'Update'
 CREATE OR REPLACE PROCEDURE decompress_backfill(staging_table regclass, 
     destination_hypertable regclass, 
-    on_conflict_do_nothing BackfillOnConflict DEFAULT 'DoNothing', 
+    on_conflict_action text DEFAULT 'NOTHING', 
     delete_from_staging bool DEFAULT true, 
     compression_job_push_interval interval DEFAULT '1 day',
-    update_action_columns text[] DEFAULT '{}')
+    on_conflict_update_columns text[] DEFAULT '{}')
 AS $proc$
 DECLARE
     source text := staging_table::text; -- Forms a properly quoted table name from our regclass
@@ -128,8 +127,6 @@ DECLARE
     
     unformatted_move_stmt text ;
     on_conflict_clause text := '';
-    on_conflict_index integer := 0;
-    on_conflict_column text := '';
 
     r_start text := NULL;
     r_end text := NULL;
@@ -189,17 +186,11 @@ BEGIN
             $$;
     END IF;
 
-    IF on_conflict_action = 'DoNothing' THEN
+    IF UPPER(on_conflict_action) = 'NOTHING' THEN
         on_conflict_clause = 'ON CONFLICT DO NOTHING';
-    ELSEIF on_conflict_action = 'Update' THEN
-        on_conflict_clause = 'ON CONFLICT DO UPDATE SET ';
-        FOR on_conflict_index IN 1 .. ARRAY_LENGTH(update_action_columns, 1) LOOP
-            on_conflict_column = update_action_columns[on_conflict_index];
-            on_conflict_clause = on_conflict_clause || FORMAT('%2$s.%1$I = to_insert.%1$I', on_conflict_column, dest);
-            IF on_conflict_index < ARRAY_LENGTH(update_action_columns, 1) THEN
-                on_conflict_clause = on_conflict_clause || ', ';
-            END IF;
-        END LOOP;
+    ELSEIF UPPER(on_conflict_action) = 'UPDATE' THEN
+        SELECT 'ON CONFLICT DO UPDATE SET ' || STRING_AGG(FORMAT('%1$I = EXCLUDED.%1$I', on_conflict_update_column), ', ')
+        FROM UNNEST(on_conflict_update_columns) AS on_conflict_update_column INTO on_conflict_clause;
     END IF;
 
     --Loop through the dimension slices that that are impacted
