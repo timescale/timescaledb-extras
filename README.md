@@ -17,6 +17,11 @@ to just include the views that you're interested in.
 `chunks.sql`
 : Defines views to get information about the time ranges and tablespace for chunks.
 
+## Useful utilities
+
+`compression.sql`
+: Define utilities for working with compressed tables.
+
 ## Documentation and Help
 
 - [Why use TimescaleDB?](https://tsdb.co/GitHubTimescaleIntro)
