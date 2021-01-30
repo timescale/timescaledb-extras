@@ -87,12 +87,12 @@ DECLARE
 BEGIN
     SELECT split_part(extversion, '.', 1)::INT INTO version FROM pg_catalog.pg_extension WHERE extname='timescaledb' LIMIT 1;
 
-    IF version = 2 THEN
-      SELECT s.job_id INTO compression_job_id FROM timescaledb_information.jobs j
+    IF version = 1 THEN
+        SELECT job_id INTO compression_job_id FROM _timescaledb_config.bgw_policy_compress_chunks b WHERE b.hypertable_id = move_compression_job.hypertable_id; 
+    ELSE
+        SELECT s.job_id INTO compression_job_id FROM timescaledb_information.jobs j
           INNER JOIN timescaledb_information.job_stats s ON j.job_id = s.job_id
           WHERE j.proc_name = 'policy_compression' AND s.hypertable_name = hypertable;
-    ELSE
-        SELECT job_id INTO compression_job_id FROM _timescaledb_config.bgw_policy_compress_chunks b WHERE b.hypertable_id = move_compression_job.hypertable_id; 
     END IF;
 
     IF compression_job_id IS NULL THEN 
@@ -100,10 +100,10 @@ BEGIN
     ELSE
         SELECT next_start INTO old_time FROM _timescaledb_internal.bgw_job_stat WHERE job_id = compression_job_id;
 
-        IF version = 2 THEN
-            PERFORM alter_job(compression_job_id, next_start=> new_time);
-        ELSE 
+        IF version = 1 THEN
             PERFORM alter_job_schedule(compression_job_id, next_start=> new_time);
+        ELSE 
+            PERFORM alter_job(compression_job_id, next_start=> new_time);
         END IF;
     END IF;
 END;
