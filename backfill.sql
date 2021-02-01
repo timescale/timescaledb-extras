@@ -79,7 +79,7 @@ BEGIN
 END;
 $$ LANGUAGE PLPGSQL;
 
-CREATE OR REPLACE FUNCTION move_compression_job(IN hypertable_id int, IN hypertable name, IN new_time timestamptz, OUT old_time timestamptz) 
+CREATE OR REPLACE FUNCTION move_compression_job(IN hypertable_id int, IN schema_name name, IN table_name name, IN new_time timestamptz, OUT old_time timestamptz) 
 AS $$
 DECLARE
     compression_job_id int;
@@ -92,7 +92,7 @@ BEGIN
     ELSE
         SELECT s.job_id INTO compression_job_id FROM timescaledb_information.jobs j
           INNER JOIN timescaledb_information.job_stats s ON j.job_id = s.job_id
-          WHERE j.proc_name = 'policy_compression' AND s.hypertable_name = hypertable;
+          WHERE j.proc_name = 'policy_compression' AND s.hypertable_schema = schema_name AND s.hypertable_name = table_name;
     END IF;
 
     IF compression_job_id IS NULL THEN 
@@ -162,7 +162,7 @@ BEGIN
     
     -- Push the compression job out for some period of time so we don't end up compressing a decompressed chunk 
     -- Don't disable completely because at least then if we fail and fail to move it back things won't get completely weird
-    SELECT move_compression_job(hypertable_row.id, hypertable_row.table_name, now() + compression_job_push_interval) INTO old_compression_job_time;
+    SELECT move_compression_job(hypertable_row.id, hypertable_row.schema_name, hypertable_row.table_name, now() + compression_job_push_interval) INTO old_compression_job_time;
 
     --Get the min and max times in timescale internal format from the source table, this will tell us which chunks we need to decompress
     EXECUTE FORMAT($$SELECT _timescaledb_internal.time_to_internal(min(%1$I)) , 
@@ -263,7 +263,7 @@ BEGIN
     RAISE NOTICE '% rows moved in range % to %', affected, r_start, r_end ;
     COMMIT;
 --Move our job back to where it was
-SELECT move_compression_job(hypertable_row.id, hypertable_row.table_name, old_compression_job_time) INTO old_compression_job_time;
+SELECT move_compression_job(hypertable_row.id, hypertable_row.schema_name, hypertable_row.table_name, old_compression_job_time) INTO old_compression_job_time;
 COMMIT;
 END;
 
