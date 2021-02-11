@@ -124,7 +124,8 @@ CREATE OR REPLACE PROCEDURE decompress_backfill(staging_table regclass,
     on_conflict_action text DEFAULT 'NOTHING', 
     delete_from_staging bool DEFAULT true, 
     compression_job_push_interval interval DEFAULT '1 day',
-    on_conflict_update_columns text[] DEFAULT '{}')
+    on_conflict_update_columns text[] DEFAULT '{}',
+    skip_empty_ranges boolean DEFAULT false)
 AS $proc$
 DECLARE
     source text := staging_table::text; -- Forms a properly quoted table name from our regclass
@@ -150,6 +151,8 @@ DECLARE
 
     old_compression_job_time timestamptz;
     chunks_decompressed bool;
+
+    current_slice_has_rows boolean := true;
     
 BEGIN
     SELECT (get_schema_and_table_name(destination_hypertable)).* INTO STRICT dest_nspname, dest_relname;
@@ -183,7 +186,7 @@ BEGIN
             WITH to_insert AS (DELETE 
             FROM %1$s --source table
             WHERE %2$I >= %3$s -- time column >= range start
-            AND %2$I < %4$s -- time column <= range end
+            AND %2$I < %4$s -- time column < range end
             RETURNING * )
             INSERT INTO %5$s 
             SELECT * FROM to_insert
@@ -194,7 +197,7 @@ BEGIN
             WITH to_insert AS (SELECT *
             FROM %1$s --source table
             WHERE %2$I >= %3$s -- time column >= range start
-            AND %2$I < %4$s) -- time column <= range end)
+            AND %2$I < %4$s) -- time column < range end)
             INSERT INTO %5$s 
             SELECT * FROM to_insert
             %6$s -- ON CONFLICT CLAUSE if it exists
@@ -218,9 +221,6 @@ BEGIN
         AND max_time_internal >= ds.range_start AND min_time_internal < ds.range_end
         ORDER BY ds.range_end
     LOOP
-        -- decompress the chunks in the dimension slice, committing transactions after each decompress
-        CALL decompress_dimension_slice(dimension_slice_row, chunks_decompressed);
-
 
         --Set the previous r_end, so that we can insert from the previous (or the min) to
         --the start, this will catch any rows that are in the source table for which we
@@ -236,6 +236,20 @@ BEGIN
         -- source table.  We won't compress the new chunks that are created, the
         -- compression job will pick those up when we re-activate it.
         r_start =LEAST(r_end_prev, r_start);
+
+        -- check if the current slice contains data that needs to be moved
+        IF skip_empty_ranges THEN
+            EXECUTE FORMAT(
+                'SELECT count(*) > 0 FROM %1$s WHERE %2$s >= %3$s AND %2$s < %4$s LIMIT 1',
+                source, dimension_row.column_name, r_start, r_end)
+            INTO current_slice_has_rows;
+        END IF;
+
+        -- skip if there is nothing to move and the flag is set
+        CONTINUE WHEN skip_empty_ranges AND NOT current_slice_has_rows;
+
+        -- decompress the chunks in the dimension slice, committing transactions after each decompress
+        CALL decompress_dimension_slice(dimension_slice_row, chunks_decompressed);
 
         EXECUTE FORMAT(unformatted_move_stmt
             , source 
