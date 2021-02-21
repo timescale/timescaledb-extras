@@ -124,7 +124,8 @@ CREATE OR REPLACE PROCEDURE decompress_backfill(staging_table regclass,
     on_conflict_action text DEFAULT 'NOTHING', 
     delete_from_staging bool DEFAULT true, 
     compression_job_push_interval interval DEFAULT '1 day',
-    on_conflict_update_columns text[] DEFAULT '{}')
+    on_conflict_update_columns text[] DEFAULT '{}',
+    on_conflict_target text DEFAULT '')
 AS $proc$
 DECLARE
     source text := staging_table::text; -- Forms a properly quoted table name from our regclass
@@ -204,7 +205,7 @@ BEGIN
     IF UPPER(on_conflict_action) = 'NOTHING' THEN
         on_conflict_clause = 'ON CONFLICT DO NOTHING';
     ELSEIF UPPER(on_conflict_action) = 'UPDATE' THEN
-        SELECT 'ON CONFLICT DO UPDATE SET ' || STRING_AGG(FORMAT('%1$I = EXCLUDED.%1$I', on_conflict_update_column), ', ')
+        SELECT 'ON CONFLICT ' || on_conflict_target || ' DO UPDATE SET ' || STRING_AGG(FORMAT('%1$I = EXCLUDED.%1$I', on_conflict_update_column), ', ')
         FROM UNNEST(on_conflict_update_columns) AS on_conflict_update_column INTO on_conflict_clause;
     END IF;
 
