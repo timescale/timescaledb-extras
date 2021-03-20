@@ -114,7 +114,7 @@ $$ LANGUAGE PLPGSQL VOLATILE;
 -- destination_hypertable is the table where rows will be moved
 -- on_conflict action controls how duplicate rows are handled on insert, it has 3 allowed values that correspond to the ON CONFLICT actions in Postgres, 'NOTHING' (default), 'UPDATE', 'RESTRICT'. Their actions:
 --   - NOTHING: ignore conflicting rows, the first inserted takes precedence
---   - UPDATE: replace values in the conflicting row according to the *on_conflict_update_columns parameter*, if this is set, the *on_conflict_update_columns* parameter must be set
+--   - UPDATE: replace values in the conflicting row according to the *on_conflict_update_columns* (required) and *on_conflict_target* (optional) parameters
 --   - RESTRICT: error if there is a conflicting insert
 -- delete_from_staging specifies whether we should delete from the staging table as we go or leave rows there
 -- compression_job_push_interval specifies how long push out the compression job as we are running, ie the max amount of time you expect the backfill to take
