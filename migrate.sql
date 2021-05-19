@@ -162,11 +162,11 @@ BEGIN
     WHILE NOT done LOOP 
         r_start = _timescaledb_internal.time_literal_sql(next_row.start_t, sink_dim.column_type);
         r_end = _timescaledb_internal.time_literal_sql(next_row.end_t, sink_dim.column_type);
-        RAISE DEBUG '% Moving times FROM % to % worker %', now(), r_start, r_end, parallel_worker_num;
+        RAISE DEBUG '% Moving times FROM % to % worker %', now(), r_start, r_end, parallel_worker_num +1;
         EXECUTE FORMAT(move_statement,  r_start, r_end);
         GET DIAGNOSTICS affected = ROW_COUNT;
         EXECUTE FORMAT(update_statement, next_row.start_t, parallel_worker_text);
-        RAISE DEBUG '% Moved % rows  FROM % to % worker %', now(), affected, r_start, r_end, parallel_worker_num;
+        RAISE DEBUG '% Moved % rows  FROM % to % worker %', now(), affected, r_start, r_end, parallel_worker_num +1; 
         COMMIT;
         EXECUTE select_next_row_stmt INTO next_row;
         IF next_row IS NULL THEN 
@@ -174,7 +174,7 @@ BEGIN
         END IF;
         
     END LOOP;
-    RAISE NOTICE '% No more work to do for worker %', now(), parallel_worker_num;
+    RAISE NOTICE '% No more work to do for worker %', now(), parallel_worker_num+1;
     COMMIT;
 END;
 $proc$ LANGUAGE PLPGSQL;
