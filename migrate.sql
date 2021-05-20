@@ -53,7 +53,6 @@ DECLARE
     max_time_internal bigint;
     interval_internal bigint;
     sql_text text;
-    parallel_worker text;
 BEGIN
     SELECT (get_dimension_details(sink_table)).* INTO STRICT dimension_row;
     
@@ -69,9 +68,9 @@ BEGIN
     CREATE TABLE IF NOT EXISTS %1$I (
         start_t BIGINT NOT NULL,
         end_t BIGINT NOT NULL,
-        parallel_worker_num int default null,
+        parallel_worker_num int,
         migrated bool DEFAULT FALSE, 
-        unique (parallel_worker_num, start_t)
+        PRIMARY KEY (parallel_worker_num, start_t)
         )
     $$, log_table_name) INTO create_table_stmt;
 
@@ -82,20 +81,19 @@ BEGIN
    -- of data to process
    SELECT dimension_row.interval_length/10 into interval_internal;
 
-parallel_worker = COALESCE(parallel_worker_num::text, 'NULL');
 
 EXECUTE FORMAT($$
     INSERT INTO %1$I (start_t, end_t, parallel_worker_num, migrated) 
     SELECT s as start_t, s + %4$s as end_t, %5$s::INT as parallel_worker_num, false 
 FROM (select generate_series(%2$s, %3$s,%4$s) as s) f ON CONFLICT DO NOTHING $$, 
-log_table_name, min_time_internal,max_time_internal, interval_internal,parallel_worker);
+log_table_name, min_time_internal,max_time_internal, interval_internal,parallel_worker_num);
 
 
 END;
 $func$ LANGUAGE PLPGSQL VOLATILE;
 
 
-
+-- ***** Now the main event *****
 CREATE OR REPLACE PROCEDURE 
 migrate_to_hypertable(
     source_table regclass,
@@ -103,7 +101,7 @@ migrate_to_hypertable(
     batch_time interval DEFAULT NULL, -- default to 1/10 chunk size for hypertable
     parallelize_column TEXT DEFAULT NULL, -- default null
     parallel_workers int DEFAULT NULL, -- default null
-    parallel_worker_num int DEFAULT NULL) 
+    parallel_worker_num int DEFAULT 0) 
 AS $proc$
 DECLARE
     sink_dim _timescaledb_catalog.dimension;
@@ -115,7 +113,6 @@ DECLARE
     done bool := false;
     r_start TEXT;
     r_end TEXT;
-    parallel_worker_text TEXT;
     affected BIGINT;
 
 BEGIN
@@ -126,13 +123,12 @@ BEGIN
     SELECT FORMAT('_ts_migrate_log_%1$s', sink_table::oid ) INTO log_table_name;
     PERFORM make_log_table(log_table_name, parallel_worker_num, source_table, sink_table, batch_time);
 
-    parallel_worker_text = COALESCE(parallel_worker_num::text, 'NULL');
 
     -- we use skip locked to make this parallelism stuff work well
     SELECT FORMAT($$ SELECT l.* FROM %1$I as l 
-        WHERE NOT migrated AND parallel_worker_num IS NOT DISTINCT FROM %2$s  
+        WHERE NOT migrated AND parallel_worker_num = %2$s  
         ORDER BY start_t ASC LIMIT 1 
-        FOR UPDATE SKIP LOCKED$$, log_table_name, parallel_worker_text) INTO select_next_row_stmt;
+        FOR UPDATE SKIP LOCKED$$, log_table_name, parallel_worker_num) INTO select_next_row_stmt;
 
     -- The extra percent character before the two variables below allow this prepared
     -- statement to be reused further down, and now "%%1" & "%%2" will be replaced/formatted
@@ -149,7 +145,7 @@ BEGIN
         INTO move_statement;
     END IF; 
 
-    SELECT FORMAT($$UPDATE %1$I SET migrated = true WHERE start_t = %%1$s AND parallel_worker_num IS NOT DISTINCT FROM %%2$s::int$$, log_table_name) 
+    SELECT FORMAT($$UPDATE %1$I SET migrated = true WHERE start_t = %%1$s AND parallel_worker_num = %%2$s::int$$, log_table_name) 
     INTO update_statement;
 
     COMMIT;
@@ -165,7 +161,7 @@ BEGIN
         RAISE DEBUG '% Moving times FROM % to % worker %', now(), r_start, r_end, parallel_worker_num +1;
         EXECUTE FORMAT(move_statement,  r_start, r_end);
         GET DIAGNOSTICS affected = ROW_COUNT;
-        EXECUTE FORMAT(update_statement, next_row.start_t, parallel_worker_text);
+        EXECUTE FORMAT(update_statement, next_row.start_t, parallel_worker_num);
         RAISE DEBUG '% Moved % rows  FROM % to % worker %', now(), affected, r_start, r_end, parallel_worker_num +1; 
         COMMIT;
         EXECUTE select_next_row_stmt INTO next_row;
