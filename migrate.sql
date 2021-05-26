@@ -52,6 +52,7 @@ DECLARE
     min_time_internal bigint;
     max_time_internal bigint;
     interval_internal bigint;
+    
     sql_text text;
 BEGIN
     SELECT (get_dimension_details(sink_table)).* INTO STRICT dimension_row;
@@ -78,8 +79,15 @@ BEGIN
    EXECUTE create_table_stmt;
 
    -- populate the table with rows for each chunk
-   -- of data to process
-   SELECT dimension_row.interval_length/10 into interval_internal;
+   -- of data to process. We default to 1/10th the 
+   -- chunk_time_interval is currently set to for this
+   -- hypertable for "INSERT INTO... SELECT..." statements 
+   -- unless another interval size is provided
+   IF batch_time IS NOT NULL THEN
+     SELECT EXTRACT(epoch from batch_time) into interval_internal;
+   ELSE
+     SELECT dimension_row.interval_length/10 into interval_internal;
+   END IF;
 
 
 EXECUTE FORMAT($$
