@@ -84,7 +84,8 @@ BEGIN
    -- hypertable for "INSERT INTO... SELECT..." statements 
    -- unless another interval size is provided
    IF batch_time IS NOT NULL THEN
-     SELECT EXTRACT(epoch from batch_time) into interval_internal;
+     -- convert the passed in interval to microseconds
+     SELECT EXTRACT(epoch from batch_time)*100000 into interval_internal;
    ELSE
      SELECT dimension_row.interval_length/10 into interval_internal;
    END IF;
