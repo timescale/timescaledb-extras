@@ -3,19 +3,21 @@ Often users of TimescaleDB have large tables of pre-existing data that they wish
 migrate into a hypertable. Without involving external tools to manage the copy of 
 data, there are generally two existing options for converting this data into a new hypertable.
 
-### Option 1: Use the `migrate_data` options of `create_hypertable()`
+**Option 1: Use the `migrate_data` options of `create_hypertable()`**
+
 The create_hypertable() function does provide an option that attempts to automate
 the migration of existing data for you. Unfortunately, the process is inefficient 
 for large datasets and provides no mechanism to the progress of the migration. And
 finally, the process is done in a single transaction which will rollback all migrated
 data if the process fails for any reason before completing.
 
-### Option 2: `SELECT` existing data `INTO` a new hypertable
+**Option 2: `SELECT` existing data `INTO` a new hypertable**
+
 A second alternative is to create a new, empty hypertable, and then perform a 
 `INSERT INTO...SELECT` type query. This is effectively a manual approach to using
 the `migrate_data` option and generally suffers from the same limitations.
 
-## `migrate.sql` functions as an alternative
+## A better alternative: `migrate.sql` functions and procedure
 Instead, you can use the functions provided in the `migrate.sql` file to scan an existing
 table that contains time-series data, create a "control" table that divides the 
 total span of time into small ranges of a few hours or days, and then use multiple 
@@ -31,7 +33,7 @@ This provides a few advantages:
    or duplication
  * The copy process can use multiple sessions to parallelize the copy process.
 
-## Limitations
+### Limitations
 In this first iteration, the process does not allow you to provide a custom
 `SELECT` statement for doing the data migration. Therefore, the source and 
 target tables must have columns in the same order. This may be improved in the
@@ -40,6 +42,7 @@ future.
 ## Using the `migrate.sql` process
 The basic process for migrating data wit the functions in this script include:
 
+1. Prepare the source table with proper indexes if necessary
 1. Create a new, empty hypertable with the same schema as the source table.
 1. Run the `migrate.sql` script to create the stored procedure and helper
 functions in the database to facilitate data migration
@@ -48,8 +51,8 @@ below.
 
 Let's look at each step.
 
-### Prepare the source table
-Assume that you have a source table with existing time-series data with the 
+### Step 1: Prepare the source table
+Assume that you have a source table with existing time-series data and the 
 following schema:
 
 ```sql
@@ -61,12 +64,12 @@ CREATE TABLE sensor_data (
 );
 ```
 
-> Before migrating data, we recommend adding an index with `time` as the leading
-> column if the table does not already have one. This should improve the overall
-> performance of the insert process, however, on a large, existing table, this
-> may take a significant amount of time. Prepare accordingly.
+Before migrating data, we recommend adding an index with `time` as the leading
+column if the table does not already have one. This should improve the overall
+performance of the insert process, however, on a large, existing table, this
+may take a significant amount of time. Prepare accordingly.
 
-### Step 1: Create a new hypertable with the same schema as the source table
+### Step 2: Create a new hypertable with the same schema as the source table
 First, create a copy of the source table with a `CREATE TABLE... LIKE` command
 to ensure proper order and data types.
 
@@ -82,11 +85,11 @@ See the hypertable best practices documentation for more information.
 SELECT create_hypertable('sensor_data_new', 'ts');
 ```
 
-### Step 2: Run the `migrate.sql` script on the database
+### Step 3: Run the `migrate.sql` script on the database
 Using `psql` or another tool, run the entire `migrate.sql` script on the database
 to create the main stored procedure and all helper functions.
 
-### Step 3: Begin the migration process
+### Step 4: Begin the migration process
 The `migrate_to_hypertable()` stored procedure does two things:
 
 1. It creates a special "log" table that identifies the total span of time in the
@@ -111,7 +114,7 @@ The migration process is run within a session and supports basic
 "parallelization" by running multiple sessions at the same time with different
 "worker" identifiers.
 
-#### **Migrate data with a single process**
+### **Migrate data with a single process**
 You can run the migration as a single process. This still has advantages over
 running a `INSERT INTO...SELECT` statement because it will commit rows of data
 while the process is running to ensure processed data is saved to disk in case
@@ -129,7 +132,7 @@ run one process, but the time span of batches is only 4 hours.
 CALL migrate_to_hypertable('sensor_data','sensor_data_new', '4 hours'::interval);
 ```
 
-#### **Migrate data with multiple sessions**
+### **Migrate data with multiple sessions**
 If your server has sufficient resources, you can often decrease the total time
 to migrate a large amount of data by running multiple processes at the same time
 from different sessions. In this scenario, you must also identify an additional
