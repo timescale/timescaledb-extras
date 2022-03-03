@@ -22,6 +22,9 @@ to just include the views that you're interested in.
 `compression.sql`
 : Define utilities for working with compressed tables.
 
+`migrate.sql` ([documentation](docs/migrate.md))
+: Incrementally copy existing time-series data from large tables into a new hypertable.
+
 ## Documentation and Help
 
 - [Why use TimescaleDB?](https://tsdb.co/GitHubTimescaleIntro)
