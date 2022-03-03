@@ -5,7 +5,7 @@ data, there are generally two existing options for converting this data into a n
 
 **Option 1: Use the `migrate_data` options of `create_hypertable()`**
 
-The create_hypertable() function does provide an option that attempts to automate
+The [`create_hypertable()`](https://docs.timescale.com/api/latest/hypertable/create_hypertable) function does provide an option that attempts to automate
 the migration of existing data for you. Unfortunately, the process is inefficient 
 for large datasets and provides no mechanism to the progress of the migration. And
 finally, the process is done in a single transaction which will rollback all migrated
@@ -79,7 +79,7 @@ CREATE TABLE sensor_data_new (LIKE sensor_data INCLUDING DEFAULTS INCLUDING CONS
 
 Create a hypertable from this new table. Depending on the amount and density 
 (cardinality) of your data, you may want to consider using a different `chunk_time_interval`.
-See the hypertable best practices documentation for more information.
+See the [hypertable best practices](https://docs.timescale.com/timescaledb/latest/how-to-guides/hypertables/best-practices/) documentation for more information.
 
 ```sql
 SELECT create_hypertable('sensor_data_new', 'ts');
