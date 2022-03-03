@@ -57,7 +57,8 @@ DECLARE
 BEGIN
     SELECT (get_dimension_details(sink_table)).* INTO STRICT dimension_row;
     
-    --Get the min and max times in timescale internal format from the source table, this will tell us which chunks we need to decompress
+    --Get the min and max times in timescale internal format from the source table
+    --This will help us determine how many batch rows to create in the logging table
     sql_text:=FORMAT($$SELECT _timescaledb_internal.time_to_internal(min(%1$I)) , 
         _timescaledb_internal.time_to_internal(max(%1$I)) 
         FROM %2$s $$, dimension_row.column_name, source_table);
@@ -94,7 +95,7 @@ BEGIN
 EXECUTE FORMAT($$
     INSERT INTO %1$I (start_t, end_t, parallel_worker_num, migrated) 
     SELECT s as start_t, s + %4$s as end_t, %5$s::INT as parallel_worker_num, false 
-FROM (select generate_series(%2$s, %3$s,%4$s) as s) f ON CONFLICT DO NOTHING $$, 
+    FROM (select generate_series(%2$s, %3$s,%4$s) as s) f ON CONFLICT DO NOTHING $$, 
 log_table_name, min_time_internal,max_time_internal, interval_internal,parallel_worker_num);
 
 
