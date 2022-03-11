@@ -98,7 +98,7 @@ BEGIN
     IF compression_job_id IS NULL THEN 
         old_time = NULL::timestamptz;
     ELSE
-        SELECT next_start INTO old_time FROM _timescaledb_internal.bgw_job_stat WHERE job_id = compression_job_id;
+        SELECT next_start INTO old_time FROM _timescaledb_internal.bgw_job_stat WHERE job_id = compression_job_id FOR UPDATE;
 
         IF version = 1 THEN
             PERFORM alter_job_schedule(compression_job_id, next_start=> new_time);
@@ -172,6 +172,7 @@ BEGIN
     -- Push the compression job out for some period of time so we don't end up compressing a decompressed chunk 
     -- Don't disable completely because at least then if we fail and fail to move it back things won't get completely weird
     SELECT move_compression_job(hypertable_row.id, hypertable_row.schema_name, hypertable_row.table_name, now() + compression_job_push_interval) INTO old_compression_job_time;
+    COMMIT;
 
     --Get the min and max times in timescale internal format from the source table, this will tell us which chunks we need to decompress
     EXECUTE FORMAT($$SELECT _timescaledb_internal.time_to_internal(min(%1$I)) , 
@@ -285,9 +286,10 @@ BEGIN
     GET DIAGNOSTICS affected = ROW_COUNT;
     RAISE NOTICE '% rows moved in range % to %', affected, r_start, r_end ;
     COMMIT;
---Move our job back to where it was
-SELECT move_compression_job(hypertable_row.id, hypertable_row.schema_name, hypertable_row.table_name, old_compression_job_time) INTO old_compression_job_time;
-COMMIT;
+
+    --Move our job back to where it was
+    SELECT move_compression_job(hypertable_row.id, hypertable_row.schema_name, hypertable_row.table_name, old_compression_job_time) INTO old_compression_job_time;
+    COMMIT;
 END;
 
 $proc$
