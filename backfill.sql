@@ -114,7 +114,7 @@ $$ LANGUAGE PLPGSQL VOLATILE;
 -- destination_hypertable is the table where rows will be moved
 -- on_conflict action controls how duplicate rows are handled on insert, it has 3 allowed values that correspond to the ON CONFLICT actions in Postgres, 'NOTHING' (default), 'UPDATE', 'RESTRICT'. Their actions:
 --   - NOTHING: ignore conflicting rows, the first inserted takes precedence
---   - UPDATE: replace values in the conflicting row according to the *on_conflict_update_columns parameter*, if this is set, the *on_conflict_update_columns* parameter must be set
+--   - UPDATE: replace values in the conflicting row according to the *on_conflict_update_columns* (required) and *on_conflict_target* (optional) parameters
 --   - RESTRICT: error if there is a conflicting insert
 -- delete_from_staging specifies whether we should delete from the staging table as we go or leave rows there
 -- compression_job_push_interval specifies how long push out the compression job as we are running, ie the max amount of time you expect the backfill to take
@@ -125,7 +125,8 @@ CREATE OR REPLACE PROCEDURE decompress_backfill(staging_table regclass,
     delete_from_staging bool DEFAULT true, 
     compression_job_push_interval interval DEFAULT '1 day',
     on_conflict_update_columns text[] DEFAULT '{}',
-    skip_empty_ranges boolean DEFAULT false)
+    skip_empty_ranges boolean DEFAULT false,
+    on_conflict_target text DEFAULT '')
 AS $proc$
 DECLARE
     source text := staging_table::text; -- Forms a properly quoted table name from our regclass
@@ -208,7 +209,7 @@ BEGIN
     IF UPPER(on_conflict_action) = 'NOTHING' THEN
         on_conflict_clause = 'ON CONFLICT DO NOTHING';
     ELSEIF UPPER(on_conflict_action) = 'UPDATE' THEN
-        SELECT 'ON CONFLICT DO UPDATE SET ' || STRING_AGG(FORMAT('%1$I = EXCLUDED.%1$I', on_conflict_update_column), ', ')
+        SELECT 'ON CONFLICT ' || on_conflict_target || ' DO UPDATE SET ' || STRING_AGG(FORMAT('%1$I = EXCLUDED.%1$I', on_conflict_update_column), ', ')
         FROM UNNEST(on_conflict_update_columns) AS on_conflict_update_column INTO on_conflict_clause;
     END IF;
 
