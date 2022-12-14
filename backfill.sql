@@ -212,7 +212,7 @@ BEGIN
         SELECT 'ON CONFLICT ' || on_conflict_target || ' DO UPDATE SET ' || STRING_AGG(FORMAT('%1$I = EXCLUDED.%1$I', on_conflict_update_column), ', ')
         FROM UNNEST(on_conflict_update_columns) AS on_conflict_update_column INTO on_conflict_clause;
     ELSEIF UPPER(on_conflict_action) = 'UPDATE_RAW' THEN
-        SELECT 'ON CONFLICT ' || on_conflict_target || ' DO UPDATE SET ' || STRING_AGG(FORMAT('%s', on_conflict_update_column), ', ')
+        SELECT 'ON CONFLICT ' || on_conflict_target || ' DO UPDATE SET ' || STRING_AGG(on_conflict_update_column, ', ')
         FROM UNNEST(on_conflict_update_columns) AS on_conflict_update_column INTO on_conflict_clause;
     END IF;
 
