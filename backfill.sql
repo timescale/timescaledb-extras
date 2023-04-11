@@ -36,6 +36,37 @@ CREATE OR REPLACE FUNCTION get_schema_and_table_name(IN regclass, OUT nspname na
     WHERE c.oid = $1::oid
 $$ LANGUAGE SQL STABLE;
 
+-- Gets the sql code for representing the literal for the given time value (in the internal representation) as the column_type.
+CREATE OR REPLACE FUNCTION time_literal_sql(
+    time_value      BIGINT,
+    column_type     REGTYPE
+)
+    RETURNS text LANGUAGE PLPGSQL STABLE AS
+$BODY$
+DECLARE
+    ret text;
+BEGIN
+    IF time_value IS NULL THEN
+        RETURN format('%L', NULL);
+    END IF;
+    CASE column_type
+      WHEN 'BIGINT'::regtype, 'INTEGER'::regtype, 'SMALLINT'::regtype THEN
+        RETURN format('%L', time_value); -- scale determined by user.
+      WHEN 'TIMESTAMP'::regtype THEN
+        --the time_value for timestamps w/o tz does not depend on local timezones. So perform at UTC.
+        RETURN format('TIMESTAMP %1$L', timezone('UTC',_timescaledb_internal.to_timestamp(time_value))); -- microseconds
+      WHEN 'TIMESTAMPTZ'::regtype THEN
+        -- assume time_value is in microsec
+        RETURN format('TIMESTAMPTZ %1$L', _timescaledb_internal.to_timestamp(time_value)); -- microseconds
+      WHEN 'DATE'::regtype THEN
+        RETURN format('%L', timezone('UTC',_timescaledb_internal.to_timestamp(time_value))::date);
+      ELSE
+         EXECUTE 'SELECT format(''%L'', $1::' || column_type::text || ')' into ret using time_value;
+         RETURN ret;
+    END CASE;
+END
+$BODY$ SET search_path TO pg_catalog, pg_temp;
+
 -- decompress all chunks in a dimension slice
 CREATE OR REPLACE PROCEDURE decompress_dimension_slice(IN dimension_slice_row _timescaledb_catalog.dimension_slice, INOUT chunks_decompressed bool) 
 AS $$
@@ -227,10 +258,10 @@ BEGIN
         --Set the previous r_end, so that we can insert from the previous (or the min) to
         --the start, this will catch any rows that are in the source table for which we
         --haven't yet made a chunk in the dest hypertable. 
-        r_end_prev = COALESCE(r_end, _timescaledb_internal.time_literal_sql(min_time_internal, dimension_row.column_type));
+        r_end_prev = COALESCE(r_end, time_literal_sql(min_time_internal, dimension_row.column_type));
         -- now actually move rows
-        r_start = _timescaledb_internal.time_literal_sql(dimension_slice_row.range_start, dimension_row.column_type);
-        r_end = _timescaledb_internal.time_literal_sql(dimension_slice_row.range_end, dimension_row.column_type);
+        r_start = time_literal_sql(dimension_slice_row.range_start, dimension_row.column_type);
+        r_end = time_literal_sql(dimension_slice_row.range_end, dimension_row.column_type);
         
         -- catch any stray rows that fall into a chunk that doesn't exist yet by expanding
         -- our range to the lower of r_end_prev and r_start, there is a case where r_start
@@ -273,8 +304,8 @@ BEGIN
     -- catch any stray rows that fall into new chunks that need to be created between our
     -- final chunk and the max in the source table, We won't compress the new chunks that are
     -- created, the job will pick those up when we re-activate it.
-    r_start = COALESCE(r_end, _timescaledb_internal.time_literal_sql(min_time_internal, dimension_row.column_type)); --if there were no rows inserted into a chunk, r_end wouldn't be defined.
-    r_end = _timescaledb_internal.time_literal_sql(max_time_internal+1, dimension_row.column_type); -- add one here, so that we can still use < rather than <= (our internal representation is a bigint)
+    r_start = COALESCE(r_end, time_literal_sql(min_time_internal, dimension_row.column_type)); --if there were no rows inserted into a chunk, r_end wouldn't be defined.
+    r_end = time_literal_sql(max_time_internal+1, dimension_row.column_type); -- add one here, so that we can still use < rather than <= (our internal representation is a bigint)
     EXECUTE FORMAT(unformatted_move_stmt
         , source 
         , dimension_row.column_name
