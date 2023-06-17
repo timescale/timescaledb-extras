@@ -1,12 +1,12 @@
 # Auto Aggregate Selection
 
-The file [utils/aggregate_selector.sql](/utils/aggregate_selector.sql) implements an automatic continuous aggregate selection system for TimescaleDB databases, which is meant to optimize the plotting of time series data in tools such as Grafana, by easing and automating the use of continuous aggregates.
+The file [utils/auto_downsample.sql](/utils/auto_downsample.sql) implements an automatic continuous aggregate selection system for TimescaleDB databases, which is meant to optimize the plotting of time series data in tools such as Grafana, by easing and automating the use of continuous aggregates.
 
 Its general usage as well as a few examples are documented here.
 
 ## Quickstart:
 
-Execute the [utils/aggregate_selector.sql](/utils/aggregate_selector.sql) file by logging in to the database via `psql` and then running `\i aggregate_selector.sql`. *Always* verify the contents of the file when doing so. I encourage you to read through the SQL source, as it's not very long!
+Execute the [utils/auto_downsample.sql](/utils/auto_downsample.sql) file by logging in to the database via `psql` and then running `\i auto_downsample.sql`. *Always* verify the contents of the file when doing so. I encourage you to read through the SQL source, as it's not very long!
 
 Create an arbitrary number of continuous aggregates on top of your existing hypertables. Make sure to name their columns reasonably, preferably with the type of downsampling in the column name, such as `value_avg`. Exact specifics don't matter, as long as all columns of the same name hold the same type of data.
 

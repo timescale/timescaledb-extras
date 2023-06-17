@@ -1,4 +1,4 @@
--- AUTO AGGREGATE SELECTION
+-- AUTO AGGREGATE SELECTION AND DOWNSAMPLING
 -- Created by: David Bailey, Jun. 2023
 -- Twitter: @XasinTheSystem
 
