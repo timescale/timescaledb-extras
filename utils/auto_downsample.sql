@@ -165,7 +165,8 @@ CREATE OR REPLACE FUNCTION auto_downsample(hypertable TEXT, data_interval INTERV
 	aggregate_choices JSONB, 
 	groupby_clause TEXT, filter_query TEXT,
 	hypertable_schema TEXT DEFAULT 'public',
-	time_column TEXT DEFAULT 'time')
+	time_column TEXT DEFAULT 'time',
+	debug_query BOOLEAN DEFAULT FALSE)
 RETURNS SETOF RECORD
 LANGUAGE plpgsql
 STABLE
@@ -174,6 +175,8 @@ DECLARE
 	selected_parameters jsonb;
 
 	aggregator_column TEXT;
+
+	query_construct TEXT;
 BEGIN
 	SELECT aggregate_choice(hypertable, data_interval, aggregate_choices, hypertable_schema) INTO selected_parameters;
 
@@ -191,16 +194,23 @@ BEGIN
 		RETURN;
 	END IF;
 
-	RETURN QUERY EXECUTE format($qry$
-		SELECT time_bucket($1, %I) AS time, %s, %s
-		FROM %I.%I
-		%s
-		GROUP BY 1, %s
-		ORDER BY 1
-	$qry$, time_column, groupby_clause, aggregator_column,
+	query_construct := format($qry$
+			SELECT time_bucket(%L, %I) AS time, %s, %s
+			FROM %I.%I
+			%s
+			GROUP BY 1, %s
+			ORDER BY 1
+		$qry$, data_interval, time_column, groupby_clause, aggregator_column,
 		selected_parameters->>'table_schema', selected_parameters->>'table_name',
 		filter_query,
-		groupby_clause) USING data_interval;
+		groupby_clause);
+
+	IF debug_query THEN
+		RAISE NOTICE 'Generated query output:'
+		RAISE NOTICE query_construct
+	END IF;
+
+	RETURN QUERY EXECUTE query_construct;
 END;
 $BODY$;
 
