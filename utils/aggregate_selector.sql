@@ -6,7 +6,7 @@
 -- This file implements the functionality of an automatic continuous aggregate selection system
 -- for TimescaleDB databases, as well as a few needed helper functions needed to perform this.
 --
--- The aggregate selection and auto-downsampling is performed via the "ts_autoagg" function. This function takes
+-- The aggregate selection and auto-downsampling is performed via the "auto_downsample" function. This function takes
 -- in a root hypertable name, a downsampling interval that is used for time_bucket grouping, a JSONB structure
 -- defining available downsampling methods, a set of columns used for a GROUP BY clause alongside the time_bucket,
 -- and a string defining further JOIN and WHERE clauses needed in the query.
@@ -41,7 +41,7 @@
 --
 ---- EXAMPLE QUERY:
 -- SELECT *
--- FROM ts_autoagg('cpu', INTERVAL '10m',
+-- FROM auto_downsample('cpu', INTERVAL '10m',
 -- -- JSONB list of aggregate options, made of "with_colum" "aggregate" pairs.
 -- $aggs$
 --	[
@@ -161,7 +161,7 @@ $BODY$;
 --   optional JOINs as well as the WHERE clause. MUST include a WHERE filter clause for the time column!
 -- - hypertable_schema: Schema of the hypertable, default 'public'
 -- - time_column: Name of the time column, default 'time'
-CREATE OR REPLACE FUNCTION ts_autoagg(hypertable TEXT, data_interval INTERVAL,
+CREATE OR REPLACE FUNCTION auto_downsample(hypertable TEXT, data_interval INTERVAL,
 	aggregate_choices JSONB, 
 	groupby_clause TEXT, filter_query TEXT,
 	hypertable_schema TEXT DEFAULT 'public',
