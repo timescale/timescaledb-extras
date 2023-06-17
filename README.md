@@ -25,7 +25,7 @@ to just include the views that you're interested in.
 `migrate.sql` ([documentation](docs/migrate.md))
 : Incrementally copy existing time-series data from large tables into a new hypertable.
 
-- [`ts_autoagg`](/docs/auto_aggregate_selection.md): Helper function to downsample timeseries data from an automatically selected continuous aggregate table.
+- [`auto_downsample`](/docs/auto_aggregate_selection.md): Helper function to downsample timeseries data from an automatically selected continuous aggregate table.
 
 ## Documentation and Help
 

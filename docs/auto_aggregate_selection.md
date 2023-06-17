@@ -12,7 +12,7 @@ Create an arbitrary number of continuous aggregates on top of your existing hype
 
 The aggregation function is defined as follows:
 ```SQL
-ts_autoagg(hypertable TEXT, 
+auto_downsample(hypertable TEXT, 
 	data_interval INTERVAL,
 	aggregate_choices JSONB, 
 	groupby_clause TEXT,
@@ -24,7 +24,7 @@ ts_autoagg(hypertable TEXT,
 And a fairly standard aggregation selection looks as follows:
 ```SQL
 SELECT *
-FROM ts_autoagg( -- Root hypertable name
+FROM auto_downsample( -- Root hypertable name
 				'cpu', 
 				-- Requested downsampling interval
 				INTERVAL '10m',
@@ -54,13 +54,13 @@ FROM ts_autoagg( -- Root hypertable name
 
 ## Detailed explanation
 
-The aggregate selection and auto-downsampling is performed via the "ts_autoagg" function. 
+The aggregate selection and auto-downsampling is performed via the "auto_downsample" function. 
 The function will, internally, search through all Continuous Aggregates built on top of the given root hypertable. It will then select one aggregate (or the hypertable itself) that matches the given input values for downsampling_interval and aggregation options. The data is then filtered with the `filter_query` parameter, and a `GROUP BY` is performed using both `time_bucket(<time_column>, <data_interval>) AS time` and the list of `groupby_clause`s. The result of this query is then returned.
 
 The function takes in the following arguments:
 
 ```SQL
-ts_autoagg(hypertable TEXT, 
+auto_downsample(hypertable TEXT, 
 	data_interval INTERVAL,
 	aggregate_choices JSONB, 
 	groupby_clause TEXT,
