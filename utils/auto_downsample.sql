@@ -180,8 +180,10 @@ DECLARE
 BEGIN
 	SELECT aggregate_choice(hypertable, data_interval, aggregate_choices, hypertable_schema) INTO selected_parameters;
 
-	IF NOT FOUND THEN
-		RAISE EXCEPTION 'No fitting hypertable or aggregate found for given columns and table %!', hypertable;
+	IF selected_parameters IS NULL THEN
+		RAISE EXCEPTION $$No fitting hypertable or aggregate found for given columns and table "%"."%"!$$,
+			hypertable_schema, hypertable
+			USING HINT = $$Make sure the 'with_columns' field of the aggregate options is correct, and that `hypertable` and `hypertable_schema` are correct!$$
 		RETURN;
 	END IF;
 
