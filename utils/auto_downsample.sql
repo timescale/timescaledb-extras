@@ -206,8 +206,7 @@ BEGIN
 		groupby_clause);
 
 	IF debug_query THEN
-		RAISE NOTICE 'Generated query output:'
-		RAISE NOTICE query_construct
+		RAISE NOTICE 'Generated query output: %s', query_construct;
 	END IF;
 
 	RETURN QUERY EXECUTE query_construct;
