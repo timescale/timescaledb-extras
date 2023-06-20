@@ -4,11 +4,69 @@ The file [utils/auto_downsample.sql](/utils/auto_downsample.sql) implements an a
 
 Its general usage as well as a few examples are documented here.
 
+
 ## Quickstart:
 
 Execute the [utils/auto_downsample.sql](/utils/auto_downsample.sql) file by logging in to the database via `psql` and then running `\i auto_downsample.sql`. *Always* verify the contents of the file when doing so. I encourage you to read through the SQL source, as it's not very long!
 
-Create an arbitrary number of continuous aggregates on top of your existing hypertables. Make sure to name their columns reasonably, preferably with the type of downsampling in the column name, such as `value_avg`. Exact specifics don't matter, as long as all columns of the same name hold the same type of data.
+The output should look similar to this:
+```SQL
+downsample_test=# \i auto_downsample.sql 
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+downsample_test=# 
+
+```
+
+Then, let's create a minimal test hypertable to run a test query against:
+```SQL
+CREATE TABLE downsample_test
+( time TIMESTAMPTZ NOT NULL,
+    symbol text,
+    price decimal,
+    volume int);
+SELECT create_hypertable('downsample_test', 'time');
+```
+
+Finally, run a test aggregation:
+```SQL
+SELECT *
+FROM auto_downsample(
+	'downsample_test',
+	INTERVAL '10m',
+	$aggregate_options$
+		[
+			{"with_columns": ["price"],  "aggregate":"avg(price) AS value"}
+		]
+	$aggregate_options$,
+	'symbol',
+	$where_clause$
+		WHERE time BETWEEN NOW()-INTERVAL'30d' AND NOW()-INTERVAL'10d'
+	$where_clause$)
+	AS (time TIMESTAMPTZ, symbol TEXT, value numeric);
+
+```
+Note that the `AS` statement's types MUST line up to the query types. For the time and tags fields that's what was specified during table creation (`TIMESTAMPTZ` and `TEXT` here), and for fields such as the aggregates `avg()` it returns `NUMERIC`. The successful output should look like this: 
+
+```SQL
+NOTICE:  Using parameter set {"aggregate": "avg(price) AS value", "table_name": "ticks", "table_schema": "public", "with_columns": ["price"], "table_interval": "00:00:00", "interval_matched": false}
+ 
+ time | symbol | value 
+------+--------+-------
+(0 rows)
+```
+
+And if there is a type missmatch, an error similar to the following will be displayed:
+```
+ERROR:  structure of query does not match function result type
+DETAIL:  Returned type numeric does not match expected type double precision in column 3.
+```
+
+
+Now, create an arbitrary number of continuous aggregates on top of your existing hypertables. Make sure to name their columns reasonably, preferably with the type of downsampling in the column name, such as `value_avg`. Exact specifics don't matter, as long as all columns of the same name hold the same type of data.
 
 The aggregation function is defined as follows:
 ```SQL
@@ -18,7 +76,8 @@ auto_downsample(hypertable TEXT,
 	groupby_clause TEXT,
 	filter_query TEXT,
 	hypertable_schema TEXT DEFAULT 'public',
-	time_column TEXT DEFAULT 'time')
+	time_column TEXT DEFAULT 'time',
+	debug_query BOOLEAN DEFAULT FALSE)
 ```
 
 And a fairly standard aggregation selection looks as follows:
@@ -47,9 +106,16 @@ FROM auto_downsample( -- Root hypertable name
 				$where_clause$
 								WHERE time BETWEEN NOW()-INTERVAL'30d' AND NOW()-INTERVAL'10d'
 									AND tags@>'{"metric":"usage_idle","cpu":"cpu-total"}'
-				$where_clause$)
+				$where_clause$,
+				-- Optional parameter to set the name of the time column
+				time_column => 'time',
+				-- Optional parameter to set the schema of the root hypertable
+				hypertable_schema => 'public',
+				-- Optional parameter to print the fully constructed query to console, 
+				-- useful to EXPLAIN it.
+				debug_query => FALSE)
 				-- The user MUST define the return columns of this function, it's a PostgreSQL quirk.
-				AS (time TIMESTAMP, tags JSONB, value DOUBLE PRECISION);
+				AS (time TIMESTAMP, tags JSONB, value NUMERIC);
 ```
 
 ## Detailed explanation
