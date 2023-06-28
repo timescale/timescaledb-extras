@@ -77,6 +77,7 @@ auto_downsample(hypertable TEXT,
 	filter_query TEXT,
 	hypertable_schema TEXT DEFAULT 'public',
 	time_column TEXT DEFAULT 'time',
+	table_alias TEXT DEFAULT 'timeseries',
 	debug_query BOOLEAN DEFAULT FALSE)
 ```
 
@@ -111,6 +112,9 @@ FROM auto_downsample( -- Root hypertable name
 				time_column => 'time',
 				-- Optional parameter to set the schema of the root hypertable
 				hypertable_schema => 'public',
+				-- This parameter sets the table alias of the selected table, to provide a
+				-- consistent name for JOIN operations
+				table_alias => 'timeseries',
 				-- Optional parameter to print the fully constructed query to console, 
 				-- useful to EXPLAIN it.
 				debug_query => FALSE)
@@ -121,7 +125,8 @@ FROM auto_downsample( -- Root hypertable name
 ## Detailed explanation
 
 The aggregate selection and auto-downsampling is performed via the "auto_downsample" function. 
-The function will, internally, search through all Continuous Aggregates built on top of the given root hypertable. It will then select one aggregate (or the hypertable itself) that matches the given input values for downsampling_interval and aggregation options. The data is then filtered with the `filter_query` parameter, and a `GROUP BY` is performed using both `time_bucket(<time_column>, <data_interval>) AS time` and the list of `groupby_clause`s. The result of this query is then returned.
+The function will, internally, search through all Continuous Aggregates built on top of the given root hypertable. It will then select one aggregate (or the hypertable itself) that matches the given input values for downsampling_interval and aggregation options. This table is selected `FROM <schema>.<name> AS table_alias`, the default for the alias being `timeseries`. The data can be joined to other tables by adding a JOIN operation to the `filter_query` statements.
+The data is then filtered with the `filter_query` parameter, and a `GROUP BY` is performed using both `time_bucket(<time_column>, <data_interval>) AS time` and the list of `groupby_clause`s. The result of this query is then returned.
 
 The function takes in the following arguments:
 
@@ -132,7 +137,9 @@ auto_downsample(hypertable TEXT,
 	groupby_clause TEXT,
 	filter_query TEXT,
 	hypertable_schema TEXT DEFAULT 'public',
-	time_column TEXT DEFAULT 'time')
+	time_column TEXT DEFAULT 'time',
+	table_alias TEXT DEFAULT 'timeseries',
+	debug_query BOOLEAN DEFAULT FALSE)
 ```
 
 The function will try and find a matching hypertable as follows:
