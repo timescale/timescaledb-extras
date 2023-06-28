@@ -161,11 +161,13 @@ $BODY$;
 --   optional JOINs as well as the WHERE clause. MUST include a WHERE filter clause for the time column!
 -- - hypertable_schema: Schema of the hypertable, default 'public'
 -- - time_column: Name of the time column, default 'time'
+-- - table_alias: Alias to use for the FROM clause. This provides a consistent name of the internal table for JOINs
 CREATE OR REPLACE FUNCTION auto_downsample(hypertable TEXT, data_interval INTERVAL,
 	aggregate_choices JSONB, 
 	groupby_clause TEXT, filter_query TEXT,
 	hypertable_schema TEXT DEFAULT 'public',
 	time_column TEXT DEFAULT 'time',
+	table_alias TEXT DEFAULT 'timeseries',
 	debug_query BOOLEAN DEFAULT FALSE)
 RETURNS SETOF RECORD
 LANGUAGE plpgsql
@@ -198,12 +200,13 @@ BEGIN
 
 	query_construct := format($qry$
 			SELECT time_bucket(%L, %I) AS time, %s, %s
-			FROM %I.%I
+			FROM %I.%I AS %I
 			%s
 			GROUP BY 1, %s
 			ORDER BY 1
 		$qry$, data_interval, time_column, groupby_clause, aggregator_column,
 		selected_parameters->>'table_schema', selected_parameters->>'table_name',
+		table_alias,
 		filter_query,
 		groupby_clause);
 
