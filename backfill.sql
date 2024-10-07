@@ -119,21 +119,23 @@ BEGIN
     SELECT split_part(extversion, '.', 1)::INT INTO version FROM pg_catalog.pg_extension WHERE extname='timescaledb' LIMIT 1;
 
     IF version = 1 THEN
-        SELECT job_id INTO compression_job_id FROM _timescaledb_config.bgw_policy_compress_chunks b WHERE b.hypertable_id = move_compression_job.hypertable_id; 
+        SELECT job_id INTO compression_job_id FROM _timescaledb_config.bgw_policy_compress_chunks b WHERE b.hypertable_id = move_compression_job.hypertable_id;
     ELSE
-        SELECT s.job_id INTO compression_job_id FROM timescaledb_information.jobs j
-          INNER JOIN timescaledb_information.job_stats s ON j.job_id = s.job_id
-          WHERE j.proc_name = 'policy_compression' AND s.hypertable_schema = schema_name AND s.hypertable_name = table_name;
+        SELECT j.job_id INTO compression_job_id FROM timescaledb_information.jobs j
+          WHERE j.proc_name = 'policy_compression' AND j.hypertable_schema = schema_name AND j.hypertable_name = table_name;
+
     END IF;
 
-    IF compression_job_id IS NULL THEN 
+    IF compression_job_id IS NULL THEN
+        RAISE NOTICE 'No compression job found, no schedule to alter';
         old_time = NULL::timestamptz;
     ELSE
         SELECT next_start INTO old_time FROM _timescaledb_internal.bgw_job_stat WHERE job_id = compression_job_id FOR UPDATE;
 
+        RAISE NOTICE 'Altering compression job schedule: id=%, old_time=%, new_time%', compression_job_id, old_time, new_time;
         IF version = 1 THEN
             PERFORM alter_job_schedule(compression_job_id, next_start=> new_time);
-        ELSE 
+        ELSE
             PERFORM alter_job(compression_job_id, next_start=> new_time);
         END IF;
     END IF;
@@ -199,11 +201,31 @@ BEGIN
     
     --And our time dimension, which is always the first dimension
     SELECT d.* INTO STRICT dimension_row FROM _timescaledb_catalog.dimension d WHERE hypertable_id = hypertable_row.id ORDER BY id LIMIT 1 ;
-    
-    -- Push the compression job out for some period of time so we don't end up compressing a decompressed chunk 
-    -- Don't disable completely because at least then if we fail and fail to move it back things won't get completely weird
-    SELECT move_compression_job(hypertable_row.id, hypertable_row.schema_name, hypertable_row.table_name, now() + compression_job_push_interval) INTO old_compression_job_time;
+
     COMMIT;
+
+    -- Push the compression job out for some period of time so we don't end up compressing a decompressed chunk
+    -- Don't disable completely because at least then if we fail and fail to move it back things won't get completely weird
+    LOOP
+        SELECT
+            move_compression_job(
+                hypertable_row.id,
+                hypertable_row.schema_name,
+                hypertable_row.table_name,
+                now() + compression_job_push_interval
+            )
+        INTO old_compression_job_time;
+        IF old_compression_job_time = '-infinity' :: timestamptz THEN
+            ROLLBACK;
+            RAISE NOTICE 'Compression job already running, sleeping...';
+            PERFORM pg_sleep(10);
+        ELSE
+            COMMIT;
+            RAISE NOTICE 'Compression job not already running, proceeding as normal...';
+            EXIT;
+        END IF;
+    END LOOP;
+
 
     --Get the min and max times in timescale internal format from the source table, this will tell us which chunks we need to decompress
     EXECUTE FORMAT($$SELECT _timescaledb_internal.time_to_internal(min(%1$I)) , 
@@ -319,7 +341,13 @@ BEGIN
     COMMIT;
 
     --Move our job back to where it was
-    SELECT move_compression_job(hypertable_row.id, hypertable_row.schema_name, hypertable_row.table_name, old_compression_job_time) INTO old_compression_job_time;
+    SELECT
+        move_compression_job(
+            hypertable_row.id,
+            hypertable_row.schema_name,
+            hypertable_row.table_name,
+            old_compression_job_time
+        ) INTO old_compression_job_time;
     COMMIT;
 END;
 
