@@ -21,6 +21,10 @@ BEGIN
         -- Prevent a hot loop
         PERFORM pg_catalog.pg_sleep(1.0);
 
+        -- By serializing the picking items from the queue, we prevent some race conditions.
+        LOCK TABLE _timescaledb_additional.incremental_continuous_aggregate_refreshes
+            IN ACCESS EXCLUSIVE MODE;
+
         SET application_name TO 'cagg incremental refresh consumer - retrieving new task';
 
         DECLARE
