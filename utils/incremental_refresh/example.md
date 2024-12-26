@@ -8,7 +8,7 @@ SELECT add_job(
 
 Add tasks
 ```sql
-call _timescaledb_additional.schedule_cagg_refresh('%_fenceline_1hour', lower_bound=>'2024-01-01', dry_run=>false);
+CALL _timescaledb_additional.schedule_osm_cagg_refresh('g_data_16_41_1minute');
 NOTICE:  Scheduled incremental refreshes for hf_dss.g_data_fenceline_1hour (2024-01-01 00:00:00+00 - 2024-10-14 00:00:00+00). Tasks evaluated: 30, newly inserted: 30
 ```
 
