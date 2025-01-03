@@ -10,8 +10,19 @@ DECLARE
     global_end_time timestamptz;
     app_name text;
 BEGIN
-    max_runtime := coalesce(max_runtime, interval '6 hours');
+    max_runtime := coalesce(max_runtime, interval '1 hours');
     global_end_time := global_start_time + max_runtime;
+
+    -- Cleanup lost tasks
+    UPDATE
+        _timescaledb_additional.incremental_continuous_aggregate_refreshes
+    SET
+        worker_pid = NULL,
+        started = NULL
+    WHERE
+        started IS NOT NULL
+        AND finished IS NULL
+        AND (NOT EXISTS (SELECT FROM pg_stat_activity WHERE pid = worker_pid) OR worker_pid IS NULL);
 
     WHILE pg_catalog.clock_timestamp() < global_end_time LOOP
         SET search_path TO 'pg_catalog,pg_temp';
@@ -94,7 +105,7 @@ BEGIN
                     EXIT;
                 ELSE
                     SET application_name TO 'cagg incremental refresh consumer - waiting for next task';
-                    PERFORM pg_catalog.pg_sleep(0.001);
+                    -- PERFORM pg_catalog.pg_sleep(0.001);
                     CONTINUE;
                 END IF;                
             END IF;
@@ -174,6 +185,8 @@ BEGIN
             SET application_name TO 'cagg incremental refresh consumer - idle';
         END;
     END LOOP;
+
+    -- @TODO: Check there's no range to be migrated and disable the job
 
     RAISE NOTICE 'Shutting down worker, as we exceeded our maximum runtime (%)', max_runtime;
 END;
