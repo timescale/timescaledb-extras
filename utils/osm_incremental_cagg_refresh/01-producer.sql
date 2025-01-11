@@ -117,7 +117,7 @@ BEGIN
         JOIN _timescaledb_catalog.continuous_agg cagg ON (cagg.raw_hypertable_id = ht.id)
         JOIN _timescaledb_catalog.continuous_aggs_bucket_function bf USING (mat_hypertable_id)
     WHERE
-        user_view_schema LIKE name_mask
+        user_view_schema LIKE schema_mask
         AND user_view_name LIKE name_mask
     GROUP BY
         mat_hypertable_id, bf.bucket_width;
@@ -136,7 +136,7 @@ BEGIN
         JOIN _timescaledb_catalog.continuous_agg cagg ON (cagg.raw_hypertable_id = ht.id)
         JOIN _timescaledb_catalog.continuous_aggs_bucket_function bf USING (mat_hypertable_id)
     WHERE
-        user_view_schema LIKE name_mask
+        user_view_schema LIKE schema_mask
         AND user_view_name LIKE name_mask
     ORDER BY
         range_start;
