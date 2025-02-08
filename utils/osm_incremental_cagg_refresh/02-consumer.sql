@@ -27,7 +27,7 @@ BEGIN
         AND (NOT EXISTS (SELECT FROM pg_stat_activity WHERE pid = worker_pid) OR worker_pid IS NULL);
 
     WHILE pg_catalog.clock_timestamp() < global_end_time LOOP
-        SET search_path TO 'pg_catalog,pg_temp';
+        SET search_path TO pg_catalog, pg_temp;
         SET lock_timeout TO '3s';
         SET application_name TO 'cagg incremental refresh consumer - idle';
 
