@@ -12,9 +12,9 @@ CREATE OR REPLACE VIEW chunks_tstz AS
 SELECT format('%1$I.%2$I', ch.schema_name, ch.table_name)::regclass AS chunk
      , format('%1$I.%2$I', ht.schema_name, ht.table_name)::regclass AS hypertable
      , tstzrange(CASE WHEN sl.range_start = -9223372036854775808 THEN NULL
-                 ELSE _timescaledb_internal.to_timestamp(sl.range_start) END,
+                 ELSE _timescaledb_functions.to_timestamp(sl.range_start) END,
                  CASE WHEN sl.range_end = 9223372036854775807 THEN NULL
-                 ELSE _timescaledb_internal.to_timestamp(sl.range_end) END)
+                 ELSE _timescaledb_functions.to_timestamp(sl.range_end) END)
        AS time_range
      , (SELECT nspname FROM pg_class JOIN pg_namespace ns ON relnamespace = ns.oid
         WHERE chunk_id = pg_class.oid) AS tablespace
