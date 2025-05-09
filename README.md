@@ -7,6 +7,7 @@ core database, including those written in PL/pgSQL.
 The current list of "extras" include:
 
 - Procedures to help backfill data into compressed ranges
+- Procedure to help make DDL changes to Compressed Tables via migration to new table
 
 ## Useful views
 
