@@ -113,6 +113,7 @@ DECLARE
   id_lower BIGINT;
   id_upper BIGINT;
   id_middle BIGINT DEFAULT 0;
+  id_middle_next BIGINT;
   range_start TIMESTAMPTZ;
   range_end TIMESTAMPTZ;
   drop_after INTERVAL;
@@ -150,11 +151,27 @@ BEGIN
     FROM _timescaledb_internal.bgw_job_stat_history
     WHERE id = id_middle;
 
+    -- If the id_middle is not found, shift to the next id
+    IF NOT FOUND THEN
+      SELECT execution_finish, id
+      INTO target_tz, id_middle_next
+      FROM _timescaledb_internal.bgw_job_stat_history
+      WHERE id >= id_middle
+      ORDER BY id LIMIT 1;
+
+      IF NOT FOUND THEN
+        RETURN NULL;
+      END IF;
+
+      RAISE DEBUG 'id_middle % not found, shift to the next id %', id_middle, id_middle_next;
+      id_middle := id_middle_next;
+    END IF;
+
     RAISE DEBUG 'target_tz %, id_lower %, id_upper %, id_middle %, le %, gt %, in range %',
       target_tz, id_lower, id_upper, id_middle, (target_tz <= search_point),
       (target_tz > search_point), (target_tz BETWEEN range_start AND range_end);
 
-    IF NOT FOUND OR target_tz BETWEEN range_start AND range_end THEN
+    IF target_tz BETWEEN range_start AND range_end THEN
       RETURN id_middle;
     ELSIF search_point <= target_tz THEN
       id_upper := id_middle - 1;
@@ -173,7 +190,8 @@ SELECT job_history_bsearch(:'search_point') AS job_id_found \gset
 
 EXPLAIN (ANALYZE, BUFFERS)
 SELECT * FROM _timescaledb_internal.bgw_job_stat_history
-WHERE id >= :'job_id_found' AND execution_finish >= :'search_point';
+WHERE id >= :'job_id_found' AND execution_finish >= :'search_point'
+ORDER BY id;
 
 
 DO
@@ -182,7 +200,6 @@ DECLARE
   search_point TIMESTAMPTZ;
   id_found BIGINT;
 BEGIN
-
   SELECT now() - (config->>'drop_after')::interval
   INTO search_point
   FROM _timescaledb_config.bgw_job
@@ -200,16 +217,26 @@ BEGIN
     RETURN;
   END IF;
 
-  LOCK TABLE _timescaledb_internal.bgw_job_stat_history
-    IN ACCESS EXCLUSIVE MODE;
-
   CREATE TEMP TABLE __tmp_bgw_job_stat_history ON COMMIT DROP AS
-    SELECT * FROM _timescaledb_internal.bgw_job_stat_history WHERE id >= id_found AND execution_finish >= search_point;
+  SELECT * FROM _timescaledb_internal.bgw_job_stat_history
+  WHERE id >= id_found AND execution_finish >= search_point
+  ORDER BY id;
+
+  ALTER TABLE _timescaledb_internal.bgw_job_stat_history
+    DROP CONSTRAINT IF EXISTS bgw_job_stat_history_pkey;
+
+  DROP INDEX IF EXISTS _timescaledb_internal.bgw_job_stat_history_job_id_idx;
 
   TRUNCATE _timescaledb_internal.bgw_job_stat_history;
  
   INSERT INTO _timescaledb_internal.bgw_job_stat_history
   SELECT * FROM __tmp_bgw_job_stat_history;
+
+  ALTER TABLE _timescaledb_internal.bgw_job_stat_history
+    ADD CONSTRAINT bgw_job_stat_history_pkey PRIMARY KEY (id);
+
+  CREATE INDEX bgw_job_stat_history_job_id_idx
+    ON _timescaledb_internal.bgw_job_stat_history (job_id);
 END;
 $$
 LANGUAGE plpgsql;
