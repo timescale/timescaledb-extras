@@ -17,7 +17,7 @@ BEGIN
     RAISE WARNING 'Found continuous aggregates using non-finalized form.';
   END IF;
 END
-$$;
+$$ SET search_path = pg_catalog, pg_temp;
 
 CREATE OR REPLACE FUNCTION check_compressed_chunk_batch_sizes() RETURNS void LANGUAGE plpgsql AS
 $$
@@ -75,14 +75,14 @@ BEGIN
         END IF;
     END LOOP;
 END
-$$;
+$$ SET search_path = pg_catalog, pg_temp;
 
 CREATE OR REPLACE FUNCTION run_checks() RETURNS void LANGUAGE plpgsql AS
 $$
 BEGIN
-  PERFORM check_deprecated_features();
-  PERFORM check_compressed_chunk_batch_sizes();
+  PERFORM public.check_deprecated_features();
+  PERFORM public.check_compressed_chunk_batch_sizes();
 END
-$$;
+$$ SET search_path = pg_catalog, pg_temp;
 
 SELECT run_checks();
