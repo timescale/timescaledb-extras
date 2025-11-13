@@ -3,7 +3,7 @@
 
 -- collection of diagnostic checks for TimescaleDB
 
-CREATE OR REPLACE FUNCTION check_deprecated_features() RETURNS void LANGUAGE plpgsql AS
+CREATE OR REPLACE FUNCTION pg_temp.check_deprecated_features() RETURNS void LANGUAGE plpgsql AS
 $$
 BEGIN
   -- check for hypertables with hypercore access method
@@ -19,7 +19,7 @@ BEGIN
 END
 $$ SET search_path = pg_catalog, pg_temp;
 
-CREATE OR REPLACE FUNCTION check_cagg_large_materialization_range() RETURNS void LANGUAGE plpgsql AS
+CREATE OR REPLACE FUNCTION pg_temp.check_cagg_large_materialization_range() RETURNS void LANGUAGE plpgsql AS
 $$
 DECLARE
   cagg regclass;
@@ -47,7 +47,7 @@ BEGIN
 END
 $$ SET search_path = pg_catalog, pg_temp;
 
-CREATE OR REPLACE FUNCTION check_job_failures() RETURNS void LANGUAGE plpgsql AS
+CREATE OR REPLACE FUNCTION pg_temp.check_job_failures() RETURNS void LANGUAGE plpgsql AS
 $$
 DECLARE
   v_failed int;
@@ -83,7 +83,7 @@ END
 $$ SET search_path = pg_catalog, pg_temp;
 
 
-CREATE OR REPLACE FUNCTION check_compressed_chunk_batch_sizes() RETURNS void LANGUAGE plpgsql AS
+CREATE OR REPLACE FUNCTION pg_temp.check_compressed_chunk_batch_sizes() RETURNS void LANGUAGE plpgsql AS
 $$
 DECLARE
     v_hypertable_id int;
@@ -141,22 +141,15 @@ BEGIN
 END
 $$ SET search_path = pg_catalog, pg_temp;
 
-CREATE OR REPLACE FUNCTION run_checks() RETURNS void LANGUAGE plpgsql AS
+CREATE OR REPLACE FUNCTION pg_temp.run_checks() RETURNS void LANGUAGE plpgsql AS
 $$
 BEGIN
-  PERFORM check_deprecated_features();
-  PERFORM check_job_failures();
-  PERFORM check_compressed_chunk_batch_sizes();
-  PERFORM check_cagg_large_materialization_range();
+  PERFORM pg_temp.check_deprecated_features();
+  PERFORM pg_temp.check_job_failures();
+  PERFORM pg_temp.check_compressed_chunk_batch_sizes();
+  PERFORM pg_temp.check_cagg_large_materialization_range();
 END
-$$;
+$$ SET search_path = pg_catalog, pg_temp;
 
--- to support installing in a non-default schema, set search_path for the main function to current schema
-DO $$
-BEGIN
-  PERFORM format('ALTER FUNCTION run_checks() SET search_path to pg_catalog, %I, pg_temp', current_schema());
-END
-$$;
-
-SELECT run_checks();
+SELECT pg_temp.run_checks();
 
