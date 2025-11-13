@@ -47,7 +47,7 @@ BEGIN
       ORDER BY count DESC
       LIMIT 5
     LOOP
-      RAISE WARNING '  Job % had % failures', v_job_id, v_job_name, v_count;
+      RAISE WARNING '  Job % had % failures', v_job_name, v_count;
     END LOOP;
   END IF;
 
