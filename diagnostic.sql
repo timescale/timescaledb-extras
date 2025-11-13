@@ -19,6 +19,34 @@ BEGIN
 END
 $$ SET search_path = pg_catalog, pg_temp;
 
+CREATE OR REPLACE FUNCTION check_cagg_large_materialization_range() RETURNS void LANGUAGE plpgsql AS
+$$
+DECLARE
+  cagg regclass;
+  range text;
+BEGIN
+  FOR cagg, range IN
+    SELECT
+      format('%I.%I', c.user_view_schema, c.user_view_name)::regclass AS continuous_aggregate,
+      CASE
+        WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN (r.greatest_modified_value - r.lowest_modified_value)::text
+        WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(r.greatest_modified_value - r.lowest_modified_value)::text
+      END AS range
+    FROM _timescaledb_catalog.continuous_aggs_materialization_ranges r
+    JOIN _timescaledb_catalog.continuous_agg c ON c.mat_hypertable_id=r.materialization_id
+    JOIN _timescaledb_catalog.continuous_aggs_bucket_function f on f.mat_hypertable_id=c.mat_hypertable_id
+    JOIN _timescaledb_catalog.dimension d ON d.hypertable_id=c.mat_hypertable_id
+    WHERE
+    CASE
+      WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN (r.greatest_modified_value - r.lowest_modified_value) > 250 * f.bucket_width::int
+      WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(r.greatest_modified_value - r.lowest_modified_value) > 250 * f.bucket_width::interval
+    END
+  LOOP
+    RAISE WARNING 'Continuous aggregate % has large materialization range ''%''.', cagg, range;
+  END LOOP;
+END
+$$ SET search_path = pg_catalog, pg_temp;
+
 CREATE OR REPLACE FUNCTION check_job_failures() RETURNS void LANGUAGE plpgsql AS
 $$
 DECLARE
@@ -119,6 +147,7 @@ BEGIN
   PERFORM check_deprecated_features();
   PERFORM check_job_failures();
   PERFORM check_compressed_chunk_batch_sizes();
+  PERFORM check_cagg_large_materialization_range();
 END
 $$;
 
