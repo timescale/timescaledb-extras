@@ -14,7 +14,27 @@ BEGIN
   -- check for continuous aggregates using non-finalized form
   PERFORM FROM _timescaledb_catalog.continuous_agg WHERE NOT finalized;
   IF FOUND THEN
-    RAISE WARNING 'Found continuous aggregates using non-finalized form.';
+    RAISE WARNING 'Found continuous aggregates using deprecated non-finalized form.';
+  END IF;
+END
+$$ SET search_path = pg_catalog, pg_temp;
+
+CREATE OR REPLACE FUNCTION pg_temp.check_scheduler_present() RETURNS void LANGUAGE plpgsql AS
+$$
+DECLARE
+  v_count int8;
+BEGIN
+  PERFORM FROM pg_stat_activity WHERE application_name = 'TimescaleDB Background Worker Launcher';
+  IF NOT FOUND THEN
+    RAISE WARNING 'TimescaleDB launcher not running';
+  END IF;
+  PERFORM FROM pg_stat_activity WHERE application_name = 'TimescaleDB Background Worker Scheduler' AND datname = current_database();
+  IF NOT FOUND THEN
+    RAISE WARNING 'TimescaleDB scheduler not running in current database';
+  END IF;
+  SELECT count(*) INTO v_count FROM pg_stat_activity WHERE application_name = 'TimescaleDB Background Worker Scheduler' AND datname = current_database();
+  IF v_count > 1 THEN
+    RAISE WARNING 'Multiple TimescaleDB scheduler (%) running in current database', v_count;
   END IF;
 END
 $$ SET search_path = pg_catalog, pg_temp;
@@ -145,6 +165,7 @@ CREATE OR REPLACE FUNCTION pg_temp.run_checks() RETURNS void LANGUAGE plpgsql AS
 $$
 BEGIN
   PERFORM pg_temp.check_deprecated_features();
+  PERFORM pg_temp.check_scheduler_present();
   PERFORM pg_temp.check_job_failures();
   PERFORM pg_temp.check_compressed_chunk_batch_sizes();
   PERFORM pg_temp.check_cagg_large_materialization_range();
