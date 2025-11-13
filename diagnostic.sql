@@ -42,10 +42,10 @@ $$ SET search_path = pg_catalog, pg_temp;
 CREATE OR REPLACE FUNCTION pg_temp.check_cagg_large_materialization_range() RETURNS void LANGUAGE plpgsql AS
 $$
 DECLARE
-  cagg regclass;
-  range text;
+  v_cagg regclass;
+  v_range text;
 BEGIN
-  FOR cagg, range IN
+  FOR v_cagg, v_range IN
     SELECT
       format('%I.%I', c.user_view_schema, c.user_view_name)::regclass AS continuous_aggregate,
       CASE
@@ -62,7 +62,36 @@ BEGIN
       WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(r.greatest_modified_value - r.lowest_modified_value) > 250 * f.bucket_width::interval
     END
   LOOP
-    RAISE WARNING 'Continuous aggregate % has large materialization range ''%''.', cagg, range;
+    RAISE WARNING 'Continuous aggregate % has large materialization range ''%''.', v_cagg, v_range;
+  END LOOP;
+END
+$$ SET search_path = pg_catalog, pg_temp;
+
+CREATE OR REPLACE FUNCTION pg_temp.check_cagg_chunk_interval() RETURNS void LANGUAGE plpgsql AS
+$$
+DECLARE
+  v_cagg regclass;
+  v_cagg_width text;
+  v_chunk_width text;
+BEGIN
+  FOR v_cagg, v_chunk_width, v_cagg_width IN
+    SELECT
+      format('%I.%I', c.user_view_schema, c.user_view_name)::regclass AS continuous_aggregate,
+      CASE
+        WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN d.interval_length::text
+        WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(d.interval_length)::text
+      END AS chunk_width,
+      f.bucket_width cagg_width
+    FROM _timescaledb_catalog.continuous_agg c
+    JOIN _timescaledb_catalog.continuous_aggs_bucket_function f ON f.mat_hypertable_id=c.mat_hypertable_id
+    JOIN _timescaledb_catalog.dimension d ON d.hypertable_id=c.mat_hypertable_id
+    WHERE
+      CASE
+        WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN d.interval_length <= f.bucket_width::int
+        WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(d.interval_length) <= f.bucket_width::interval
+      END
+  LOOP
+    RAISE WARNING 'Continuous aggregate % has chunk width smaller than bucket width % <= %', v_cagg, v_chunk_width, v_cagg_width;
   END LOOP;
 END
 $$ SET search_path = pg_catalog, pg_temp;
@@ -169,6 +198,7 @@ BEGIN
   PERFORM pg_temp.check_job_failures();
   PERFORM pg_temp.check_compressed_chunk_batch_sizes();
   PERFORM pg_temp.check_cagg_large_materialization_range();
+  PERFORM pg_temp.check_cagg_chunk_interval();
 END
 $$ SET search_path = pg_catalog, pg_temp;
 
