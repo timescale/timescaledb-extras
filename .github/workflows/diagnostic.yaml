@@ -1,0 +1,56 @@
+# Test diagnostic script from timescaledb-extras works
+name: "Verify diagnostic script works"
+"on":
+  schedule:
+    # run daily 0:00 on main branch
+    - cron: '0 0 * * *'
+  pull_request:
+  workflow_dispatch:
+jobs:
+  diagnostic_test:
+    name: Test diagnostic script PG${{ matrix.pg }}
+    runs-on: ubuntu-latest
+    services:
+      ts:
+        image: timescale/timescaledb:latest-pg${{ matrix.pg }}
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRESQL_PASSWORD: ci
+
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: ci
+
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: [15,16,17,18]
+
+    steps:
+
+    - uses: actions/checkout@v4
+
+    - name: Wait for services to start
+      run: |
+        sleep 10
+        pg_isready -t 30
+
+    - name: Prepare database
+      run: |
+        psql -v ON_ERROR_STOP=1 -c "$(cat <<SQL
+          SELECT version();
+          SELECT extname, extversion from pg_extension;
+          CREATE TABLE t(time timestamptz) WITH (tsdb.hypertable);
+          INSERT INTO t SELECT '2025-01-01';
+          INSERT INTO t SELECT '2025-02-01';
+          SELECT compress_chunk(show_chunks('t'));
+        SQL
+        )"
+
+    - name: Run diagnostic script
+      run: |
+        psql -v ON_ERROR_STOP=1 < diagnostic.sql
+
