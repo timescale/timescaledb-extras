@@ -116,10 +116,18 @@ $$ SET search_path = pg_catalog, pg_temp;
 CREATE OR REPLACE FUNCTION run_checks() RETURNS void LANGUAGE plpgsql AS
 $$
 BEGIN
-  PERFORM public.check_deprecated_features();
-  PERFORM public.check_job_failures();
-  PERFORM public.check_compressed_chunk_batch_sizes();
+  PERFORM check_deprecated_features();
+  PERFORM check_job_failures();
+  PERFORM check_compressed_chunk_batch_sizes();
 END
-$$ SET search_path = pg_catalog, pg_temp;
+$$;
+
+-- to support installing in a non-default schema, set search_path for the main function to current schema
+DO $$
+BEGIN
+  PERFORM format('ALTER FUNCTION run_checks() SET search_path to pg_catalog, %I, pg_temp', current_schema());
+END
+$$;
 
 SELECT run_checks();
+
