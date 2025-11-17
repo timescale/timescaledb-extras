@@ -19,6 +19,18 @@ BEGIN
 END
 $$ SET search_path = pg_catalog, pg_temp;
 
+CREATE OR REPLACE FUNCTION pg_temp.check_catalog_corruption() RETURNS void LANGUAGE plpgsql AS
+$$
+DECLARE
+  v_count int8;
+BEGIN
+  SELECT count(*) INTO v_count FROM _timescaledb_catalog.chunk_column_stats WHERE range_start > range_end;
+  IF v_count >= 1 THEN
+    RAISE WARNING 'Found %s entries in _timescaledb_catalog.chunk_column_stats with range_start > range_end', v_count;
+  END IF;
+END
+$$ SET search_path = pg_catalog, pg_temp;
+
 CREATE OR REPLACE FUNCTION pg_temp.check_scheduler_present() RETURNS void LANGUAGE plpgsql AS
 $$
 DECLARE
