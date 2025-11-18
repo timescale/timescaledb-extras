@@ -47,6 +47,9 @@ jobs:
           INSERT INTO t SELECT '2025-01-01';
           INSERT INTO t SELECT '2025-02-01';
           SELECT compress_chunk(show_chunks('t'));
+          -- test orphaned chunks
+          CREATE TABLE _timescaledb_internal.compress_hyper_100_1_chunk();
+          CREATE TABLE _timescaledb_internal._hyper_100_1_chunk();
         SQL
         )"
 
