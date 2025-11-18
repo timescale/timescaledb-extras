@@ -6,7 +6,11 @@ core database, including those written in PL/pgSQL.
 
 The current list of "extras" include:
 
-- Procedures to help backfill data into compressed ranges
+## Diagnostic checks
+
+`diagnostic.sql`
+: Checks for common misconfigurations and issues that can affect
+performance and reliability of TimescaleDB installations.
 
 ## Useful views
 
