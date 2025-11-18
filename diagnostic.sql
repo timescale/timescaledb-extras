@@ -57,11 +57,7 @@ BEGIN
     NOT dropped AND
     NOT EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid WHERE c.relname=ch.table_name AND n.nspname = ch.schema_name);
   IF v_count > 0 THEN
-    IF v_count < 20 THEN
-      RAISE WARNING 'Found % chunk entries without relations: %', v_count, v_relnames;
-    ELSE
-      RAISE WARNING 'Found % chunk entries without relations', v_count;
-    END IF;
+    RAISE WARNING 'Found % chunk entries without relations: %', v_count, v_relnames[1:20];
   END IF;
 
   -- orphaned chunks
@@ -73,11 +69,7 @@ BEGIN
     relname LIKE '%_chunk' AND
     NOT EXISTS(SELECT FROM _timescaledb_catalog.chunk where schema_name='_timescaledb_internal' and table_name = relname);
   IF v_count > 0 THEN
-    IF v_count < 20 THEN
-      RAISE WARNING 'Found % orphaned chunk relations: %', v_count, v_rels;
-    ELSE
-      RAISE WARNING 'Found % orphaned chunk relations', v_count;
-    END IF;
+    RAISE WARNING 'Found % orphaned chunk relations: %', v_count, v_rels[1:20];
   END IF;
 END
 $$ SET search_path = pg_catalog, pg_temp;
