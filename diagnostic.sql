@@ -2,6 +2,24 @@
 -- Please see the included NOTICE and LICENSE for copyright and licensing information.
 
 -- collection of diagnostic checks for TimescaleDB
+--
+-- Checks included:
+-- - deprecated features
+--    - hypercore access method
+--    - continuous aggregates non-finalized form
+-- - catalog corruption
+--   - chunk_column_stats with range_start > range_end
+--   - orphaned chunks
+-- - scheduler checks
+--   - launcher running
+--   - exactly 1 scheduler running in current database
+--   - job failures
+-- - compression
+--   - compressed batch sizes
+-- - continuous aggregates
+--   - continuous aggregate large materialization ranges
+--   - continuous aggregate chunk interval vs bucket width
+--
 
 CREATE OR REPLACE FUNCTION pg_temp.check_deprecated_features() RETURNS void LANGUAGE plpgsql AS
 $$
