@@ -23,10 +23,27 @@ CREATE OR REPLACE FUNCTION pg_temp.check_catalog_corruption() RETURNS void LANGU
 $$
 DECLARE
   v_count int8;
+  v_rels regclass[];
 BEGIN
+  -- corrupt _timescaledb_catalog.chunk_column_stats entries
   SELECT count(*) INTO v_count FROM _timescaledb_catalog.chunk_column_stats WHERE range_start > range_end;
   IF v_count >= 1 THEN
     RAISE WARNING 'Found %s entries in _timescaledb_catalog.chunk_column_stats with range_start > range_end', v_count;
+  END IF;
+  -- orphaned chunks
+  SELECT count(*), array_agg(oid::regclass) INTO v_count, v_rels
+  FROM pg_class
+  WHERE
+    relnamespace='_timescaledb_internal'::regnamespace AND
+    relkind='r' AND
+    relname LIKE '%_chunk' AND
+    NOT EXISTS(SELECT FROM _timescaledb_catalog.chunk where schema_name='_timescaledb_internal' and table_name = relname);
+  IF v_count > 0 THEN
+    IF v_count < 20 THEN
+      RAISE WARNING 'Found % orphaned chunk relations: %', v_count, v_rels;
+    ELSE
+      RAISE WARNING 'Found % orphaned chunk relations', v_count;
+    END IF;
   END IF;
 END
 $$ SET search_path = pg_catalog, pg_temp;
@@ -206,6 +223,7 @@ CREATE OR REPLACE FUNCTION pg_temp.run_checks() RETURNS void LANGUAGE plpgsql AS
 $$
 BEGIN
   PERFORM pg_temp.check_deprecated_features();
+  PERFORM pg_temp.check_catalog_corruption();
   PERFORM pg_temp.check_scheduler_present();
   PERFORM pg_temp.check_job_failures();
   PERFORM pg_temp.check_compressed_chunk_batch_sizes();
