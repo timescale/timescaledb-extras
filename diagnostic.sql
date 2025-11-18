@@ -29,6 +29,7 @@ BEGIN
   IF FOUND THEN
     RAISE WARNING 'Found relations using the deprecated hypercore access method.';
   END IF;
+
   -- check for continuous aggregates using non-finalized form
   PERFORM FROM _timescaledb_catalog.continuous_agg WHERE NOT finalized;
   IF FOUND THEN
@@ -41,6 +42,7 @@ CREATE OR REPLACE FUNCTION pg_temp.check_catalog_corruption() RETURNS void LANGU
 $$
 DECLARE
   v_count int8;
+  v_relnames text[];
   v_rels regclass[];
 BEGIN
   -- corrupt _timescaledb_catalog.chunk_column_stats entries
@@ -48,6 +50,20 @@ BEGIN
   IF v_count >= 1 THEN
     RAISE WARNING 'Found %s entries in _timescaledb_catalog.chunk_column_stats with range_start > range_end', v_count;
   END IF;
+
+  -- chunks with missing relations
+  SELECT count(*), array_agg(format('%I.%I',ch.schema_name,ch.table_name)) INTO v_count, v_relnames
+  FROM _timescaledb_catalog.chunk ch WHERE
+    NOT dropped AND
+    NOT EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid WHERE c.relname=ch.table_name AND n.nspname = ch.schema_name);
+  IF v_count > 0 THEN
+    IF v_count < 20 THEN
+      RAISE WARNING 'Found % chunk entries without relations: %', v_count, v_relnames;
+    ELSE
+      RAISE WARNING 'Found % chunk entries without relations', v_count;
+    END IF;
+  END IF;
+
   -- orphaned chunks
   SELECT count(*), array_agg(oid::regclass) INTO v_count, v_rels
   FROM pg_class
@@ -189,7 +205,7 @@ DECLARE
     v_batch_sub100 int8;
     v_batch_sub100_pct float;
     v_batch_sub100_avg float;
-    v_batch_total	int8;
+    v_batch_total  int8;
     v_chunks_sub100 int8;
     v_chunks_total int8;
     v_returned_rows int;
@@ -213,11 +229,11 @@ BEGIN
 
             -- check if batch has more than 20% of batches with less than 100 tuples
             EXECUTE format('
-				      SELECT
-				      	count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100) batch_sub100,
-				      	avg(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100) batch_sub100_avg,
-				      	(count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100)/count(_ts_meta_count)::float) * 100 batch_sub100_pct,
-				      	count(_ts_meta_count) batch_total
+              SELECT
+                count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100) batch_sub100,
+                avg(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100) batch_sub100_avg,
+                (count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100)/count(_ts_meta_count)::float) * 100 batch_sub100_pct,
+                count(_ts_meta_count) batch_total
               FROM %s HAVING (count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100)/count(_ts_meta_count)::float) > 0.2;
             ', v_compressed_chunk) INTO v_batch_sub100, v_batch_sub100_avg, v_batch_sub100_pct, v_batch_total;
 
