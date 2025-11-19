@@ -19,10 +19,11 @@
 -- - continuous aggregates
 --   - continuous aggregate large materialization ranges
 --   - continuous aggregate chunk interval vs bucket width
---
 
-CREATE OR REPLACE FUNCTION pg_temp.check_deprecated_features() RETURNS void LANGUAGE plpgsql AS
-$$
+SET search_path TO pg_catalog, pg_temp;
+
+-- deprecated features
+DO $$
 BEGIN
   -- check for hypertables with hypercore access method
   PERFORM FROM pg_class c join pg_am am ON c.relam=am.oid AND am.amname='hypercore' LIMIT 1;
@@ -36,10 +37,10 @@ BEGIN
     RAISE WARNING 'Found continuous aggregates using deprecated non-finalized form.';
   END IF;
 END
-$$ SET search_path = pg_catalog, pg_temp;
+$$;
 
-CREATE OR REPLACE FUNCTION pg_temp.check_catalog_corruption() RETURNS void LANGUAGE plpgsql AS
-$$
+-- catalog corruption checks
+DO $$
 DECLARE
   v_count int8;
   v_relnames text[];
@@ -72,10 +73,10 @@ BEGIN
     RAISE WARNING 'Found % orphaned chunk relations: %', v_count, v_rels[1:20];
   END IF;
 END
-$$ SET search_path = pg_catalog, pg_temp;
+$$;
 
-CREATE OR REPLACE FUNCTION pg_temp.check_scheduler_present() RETURNS void LANGUAGE plpgsql AS
-$$
+-- scheduler checks
+DO $$
 DECLARE
   v_count int8;
 BEGIN
@@ -92,67 +93,10 @@ BEGIN
     RAISE WARNING 'Multiple TimescaleDB scheduler (%) running in current database', v_count;
   END IF;
 END
-$$ SET search_path = pg_catalog, pg_temp;
+$$;
 
-CREATE OR REPLACE FUNCTION pg_temp.check_cagg_large_materialization_range() RETURNS void LANGUAGE plpgsql AS
-$$
-DECLARE
-  v_cagg regclass;
-  v_range text;
-BEGIN
-  FOR v_cagg, v_range IN
-    SELECT
-      format('%I.%I', c.user_view_schema, c.user_view_name)::regclass AS continuous_aggregate,
-      CASE
-        WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN (r.greatest_modified_value - r.lowest_modified_value)::text
-        WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(r.greatest_modified_value - r.lowest_modified_value)::text
-      END AS range
-    FROM _timescaledb_catalog.continuous_aggs_materialization_ranges r
-    JOIN _timescaledb_catalog.continuous_agg c ON c.mat_hypertable_id=r.materialization_id
-    JOIN _timescaledb_catalog.continuous_aggs_bucket_function f on f.mat_hypertable_id=c.mat_hypertable_id
-    JOIN _timescaledb_catalog.dimension d ON d.hypertable_id=c.mat_hypertable_id
-    WHERE
-    CASE
-      WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN (r.greatest_modified_value - r.lowest_modified_value) > 250 * f.bucket_width::int
-      WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(r.greatest_modified_value - r.lowest_modified_value) > 250 * f.bucket_width::interval
-    END
-  LOOP
-    RAISE WARNING 'Continuous aggregate % has large materialization range ''%''.', v_cagg, v_range;
-  END LOOP;
-END
-$$ SET search_path = pg_catalog, pg_temp;
-
-CREATE OR REPLACE FUNCTION pg_temp.check_cagg_chunk_interval() RETURNS void LANGUAGE plpgsql AS
-$$
-DECLARE
-  v_cagg regclass;
-  v_cagg_width text;
-  v_chunk_width text;
-BEGIN
-  FOR v_cagg, v_chunk_width, v_cagg_width IN
-    SELECT
-      format('%I.%I', c.user_view_schema, c.user_view_name)::regclass AS continuous_aggregate,
-      CASE
-        WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN d.interval_length::text
-        WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(d.interval_length)::text
-      END AS chunk_width,
-      f.bucket_width cagg_width
-    FROM _timescaledb_catalog.continuous_agg c
-    JOIN _timescaledb_catalog.continuous_aggs_bucket_function f ON f.mat_hypertable_id=c.mat_hypertable_id
-    JOIN _timescaledb_catalog.dimension d ON d.hypertable_id=c.mat_hypertable_id
-    WHERE
-      CASE
-        WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN d.interval_length <= f.bucket_width::int
-        WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(d.interval_length) <= f.bucket_width::interval
-      END
-  LOOP
-    RAISE WARNING 'Continuous aggregate % has chunk width smaller than bucket width % <= %', v_cagg, v_chunk_width, v_cagg_width;
-  END LOOP;
-END
-$$ SET search_path = pg_catalog, pg_temp;
-
-CREATE OR REPLACE FUNCTION pg_temp.check_job_failures() RETURNS void LANGUAGE plpgsql AS
-$$
+-- job failure checks
+DO $$
 DECLARE
   v_failed int;
   v_total int;
@@ -182,13 +126,71 @@ BEGIN
       RAISE WARNING '  Job % had % failures', v_job_name, v_count;
     END LOOP;
   END IF;
-
 END
-$$ SET search_path = pg_catalog, pg_temp;
+$$;
+
+-- continuous aggregate checks
+-- continuous aggregates with large materialization ranges
+DO $$
+DECLARE
+  v_cagg regclass;
+  v_range text;
+BEGIN
+  FOR v_cagg, v_range IN
+    SELECT
+      format('%I.%I', c.user_view_schema, c.user_view_name)::regclass AS continuous_aggregate,
+      CASE
+        WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN (r.greatest_modified_value - r.lowest_modified_value)::text
+        WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(r.greatest_modified_value - r.lowest_modified_value)::text
+      END AS range
+    FROM _timescaledb_catalog.continuous_aggs_materialization_ranges r
+    JOIN _timescaledb_catalog.continuous_agg c ON c.mat_hypertable_id=r.materialization_id
+    JOIN _timescaledb_catalog.continuous_aggs_bucket_function f on f.mat_hypertable_id=c.mat_hypertable_id
+    JOIN _timescaledb_catalog.dimension d ON d.hypertable_id=c.mat_hypertable_id
+    WHERE
+    CASE
+      WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN (r.greatest_modified_value - r.lowest_modified_value) > 250 * f.bucket_width::int
+      WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(r.greatest_modified_value - r.lowest_modified_value) > 250 * f.bucket_width::interval
+    END
+  LOOP
+    RAISE WARNING 'Continuous aggregate % has large materialization range ''%''.', v_cagg, v_range;
+  END LOOP;
+END
+$$;
+
+-- continuous aggregates with chunk interval smaller than bucket width
+DO $$
+DECLARE
+  v_cagg regclass;
+  v_cagg_width text;
+  v_chunk_width text;
+BEGIN
+  FOR v_cagg, v_chunk_width, v_cagg_width IN
+    SELECT
+      format('%I.%I', c.user_view_schema, c.user_view_name)::regclass AS continuous_aggregate,
+      CASE
+        WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN d.interval_length::text
+        WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(d.interval_length)::text
+      END AS chunk_width,
+      f.bucket_width cagg_width
+    FROM _timescaledb_catalog.continuous_agg c
+    JOIN _timescaledb_catalog.continuous_aggs_bucket_function f ON f.mat_hypertable_id=c.mat_hypertable_id
+    JOIN _timescaledb_catalog.dimension d ON d.hypertable_id=c.mat_hypertable_id
+    WHERE
+      CASE
+        WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN d.interval_length <= f.bucket_width::int
+        WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(d.interval_length) <= f.bucket_width::interval
+      END
+  LOOP
+    RAISE WARNING 'Continuous aggregate % has chunk width smaller than bucket width % <= %', v_cagg, v_chunk_width, v_cagg_width;
+  END LOOP;
+END
+$$;
 
 
-CREATE OR REPLACE FUNCTION pg_temp.check_compressed_chunk_batch_sizes() RETURNS void LANGUAGE plpgsql AS
-$$
+-- compression checks
+-- compressed chunk batch sizes
+DO $$
 DECLARE
     v_hypertable_id int;
     v_hypertable regclass;
@@ -243,20 +245,5 @@ BEGIN
         END IF;
     END LOOP;
 END
-$$ SET search_path = pg_catalog, pg_temp;
-
-CREATE OR REPLACE FUNCTION pg_temp.run_checks() RETURNS void LANGUAGE plpgsql AS
-$$
-BEGIN
-  PERFORM pg_temp.check_deprecated_features();
-  PERFORM pg_temp.check_catalog_corruption();
-  PERFORM pg_temp.check_scheduler_present();
-  PERFORM pg_temp.check_job_failures();
-  PERFORM pg_temp.check_compressed_chunk_batch_sizes();
-  PERFORM pg_temp.check_cagg_large_materialization_range();
-  PERFORM pg_temp.check_cagg_chunk_interval();
-END
-$$ SET search_path = pg_catalog, pg_temp;
-
-SELECT pg_temp.run_checks();
+$$;
 
