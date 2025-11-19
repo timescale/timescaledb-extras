@@ -80,17 +80,19 @@ DO $$
 DECLARE
   v_count int8;
 BEGIN
-  PERFORM FROM pg_stat_activity WHERE application_name = 'TimescaleDB Background Worker Launcher';
-  IF NOT FOUND THEN
-    RAISE WARNING 'TimescaleDB launcher not running';
-  END IF;
-  PERFORM FROM pg_stat_activity WHERE application_name = 'TimescaleDB Background Worker Scheduler' AND datname = current_database();
-  IF NOT FOUND THEN
-    RAISE WARNING 'TimescaleDB scheduler not running in current database';
-  END IF;
-  SELECT count(*) INTO v_count FROM pg_stat_activity WHERE application_name = 'TimescaleDB Background Worker Scheduler' AND datname = current_database();
-  IF v_count > 1 THEN
-    RAISE WARNING 'Multiple TimescaleDB scheduler (%) running in current database', v_count;
+  IF NOT pg_is_in_recovery() THEN
+    PERFORM FROM pg_stat_activity WHERE application_name = 'TimescaleDB Background Worker Launcher';
+    IF NOT FOUND THEN
+      RAISE WARNING 'TimescaleDB launcher not running';
+    END IF;
+    PERFORM FROM pg_stat_activity WHERE application_name = 'TimescaleDB Background Worker Scheduler' AND datname = current_database();
+    IF NOT FOUND THEN
+      RAISE WARNING 'TimescaleDB scheduler not running in current database';
+    END IF;
+    SELECT count(*) INTO v_count FROM pg_stat_activity WHERE application_name = 'TimescaleDB Background Worker Scheduler' AND datname = current_database();
+    IF v_count > 1 THEN
+      RAISE WARNING 'Multiple TimescaleDB scheduler (%) running in current database', v_count;
+    END IF;
   END IF;
 END
 $$;
