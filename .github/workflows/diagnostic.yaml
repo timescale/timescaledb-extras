@@ -43,6 +43,7 @@ jobs:
         psql -v ON_ERROR_STOP=1 -c "$(cat <<SQL
           SELECT version();
           SELECT extname, extversion from pg_extension;
+          SELECT _timescaledb_functions.stop_background_workers();
           CREATE TABLE t(time timestamptz) WITH (tsdb.hypertable);
           INSERT INTO t SELECT '2025-01-01';
           INSERT INTO t SELECT '2025-02-01';
