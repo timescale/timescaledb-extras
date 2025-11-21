@@ -147,7 +147,7 @@ BEGIN
       END AS range
     FROM _timescaledb_catalog.continuous_aggs_materialization_ranges r
     JOIN _timescaledb_catalog.continuous_agg c ON c.mat_hypertable_id=r.materialization_id
-    JOIN _timescaledb_catalog.continuous_aggs_bucket_function f on f.mat_hypertable_id=c.mat_hypertable_id
+    JOIN LATERAL(SELECT * FROM _timescaledb_functions.cagg_get_bucket_function_info(c.mat_hypertable_id)) f on true
     JOIN _timescaledb_catalog.dimension d ON d.hypertable_id=c.mat_hypertable_id
     WHERE
     CASE
@@ -176,7 +176,7 @@ BEGIN
       END AS chunk_width,
       f.bucket_width cagg_width
     FROM _timescaledb_catalog.continuous_agg c
-    JOIN _timescaledb_catalog.continuous_aggs_bucket_function f ON f.mat_hypertable_id=c.mat_hypertable_id
+    JOIN LATERAL(SELECT * FROM _timescaledb_functions.cagg_get_bucket_function_info(c.mat_hypertable_id)) f on true
     JOIN _timescaledb_catalog.dimension d ON d.hypertable_id=c.mat_hypertable_id
     WHERE
       CASE
