@@ -226,7 +226,9 @@ BEGIN
             format('%I.%I',ch.schema_name, ch.table_name) chunk,
             format('%I.%I',ch2.schema_name, ch2.table_name) compressed
           FROM _timescaledb_catalog.chunk ch
+          JOIN pg_class c_ch ON c_ch.relname = ch.table_name AND c_ch.relnamespace = ch.schema_name::regnamespace
           JOIN _timescaledb_catalog.chunk ch2 ON ch2.id = ch.compressed_chunk_id
+          JOIN pg_class c_ch2 ON c_ch2.relname = ch2.table_name AND c_ch2.relnamespace = ch2.schema_name::regnamespace
           WHERE ch.hypertable_id = v_hypertable_id
         LOOP
             RAISE DEBUG '  Checking chunk: %', v_chunk;
