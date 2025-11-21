@@ -42,6 +42,7 @@ $$;
 -- catalog corruption checks
 DO $$
 DECLARE
+  v_query text;
   v_count int8;
   v_relnames text[];
   v_rels regclass[];
@@ -53,10 +54,18 @@ BEGIN
   END IF;
 
   -- chunks with missing relations
-  SELECT count(*), array_agg(format('%I.%I',ch.schema_name,ch.table_name)) INTO v_count, v_relnames
-  FROM _timescaledb_catalog.chunk ch WHERE
-    NOT dropped AND
-    NOT EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid WHERE c.relname=ch.table_name AND n.nspname = ch.schema_name);
+  -- this check finds chunks that have an entry in our catalog but the actual table is missing
+  v_query := $sql$
+    SELECT count(*), array_agg(format('%I.%I',ch.schema_name,ch.table_name))
+    FROM _timescaledb_catalog.chunk ch WHERE
+      NOT EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid WHERE c.relname=ch.table_name AND n.nspname = ch.schema_name)
+  $sql$;
+  PERFORM FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid AND c.relnamespace='_timescaledb_catalog'::regnamespace AND c.relname = 'chunk' WHERE a.attname = 'dropped';
+  IF FOUND THEN
+    v_query := v_query || ' AND NOT ch.dropped';
+  END IF;
+
+  EXECUTE v_query INTO v_count, v_relnames;
   IF v_count > 0 THEN
     RAISE WARNING 'Found % chunk entries without relations: %', v_count, v_relnames[1:20];
   END IF;
