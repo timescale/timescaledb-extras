@@ -39,6 +39,15 @@ BEGIN
 END
 $$;
 
+-- undesirable settings
+DO $$
+BEGIN
+  IF current_setting('timescaledb.restoring')::bool THEN
+    RAISE WARNING 'timescaledb.restoring is enabled. This setting should only be enabled during maintenance operations.';
+  END IF;
+END
+$$;
+
 -- catalog corruption checks
 DO $$
 DECLARE
