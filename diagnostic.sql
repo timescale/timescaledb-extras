@@ -5,11 +5,14 @@
 --
 -- Checks included:
 -- - deprecated features
---    - hypercore access method
---    - continuous aggregates non-finalized form
+--   - hypercore access method
+--   - continuous aggregates non-finalized form
+-- - undesirable settings
+--   - timescaledb.restoring
 -- - catalog corruption
 --   - chunk_column_stats with range_start > range_end
 --   - orphaned chunks
+--   - orphaned hypertables
 -- - scheduler checks
 --   - launcher running
 --   - exactly 1 scheduler running in current database
@@ -63,7 +66,7 @@ BEGIN
   END IF;
 
   -- chunks with missing relations
-  -- this check finds chunks that have an entry in our catalog but the actual table is missing
+  -- finds chunks that have an entry in our catalog but the actual table is missing
   v_query := $sql$
     SELECT count(*), array_agg(format('%I.%I',ch.schema_name,ch.table_name))
     FROM _timescaledb_catalog.chunk ch WHERE
@@ -77,6 +80,18 @@ BEGIN
   EXECUTE v_query INTO v_count, v_relnames;
   IF v_count > 0 THEN
     RAISE WARNING 'Found % chunk entries without relations: %', v_count, v_relnames[1:20];
+  END IF;
+
+  -- find hypertables that have an entry in our catalog but the actual table is missing
+  SELECT count(*), array_agg(format('%I.%I',ht.schema_name,ht.table_name)) INTO v_count, v_relnames
+	FROM _timescaledb_catalog.hypertable ht
+  WHERE NOT EXISTS(
+    SELECT FROM pg_class c
+    JOIN pg_namespace ns ON ns.oid=c.relnamespace AND ns.nspname = ht.schema_name
+    WHERE c.relname=ht.table_name
+  );
+  IF v_count > 0 THEN
+    RAISE WARNING 'Found % hypertable entries without relations: %', v_count, v_relnames[1:20];
   END IF;
 
   -- orphaned chunks
