@@ -284,3 +284,4 @@ BEGIN
 END
 $$;
 
+RESET search_path;
