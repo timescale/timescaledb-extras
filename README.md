@@ -29,6 +29,8 @@ to just include the views that you're interested in.
 `migrate.sql` ([documentation](docs/migrate.md))
 : Incrementally copy existing time-series data from large tables into a new hypertable.
 
+- [`auto_downsample`](/docs/auto_downsample.md): Helper function to downsample timeseries data from an automatically selected continuous aggregate table.
+
 ## Documentation and Help
 
 - [Why use TimescaleDB?](https://tsdb.co/GitHubTimescaleIntro)
