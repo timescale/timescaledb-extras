@@ -58,6 +58,8 @@ DECLARE
   v_count int8;
   v_relnames text[];
   v_rels regclass[];
+  v_hypertable regclass;
+  v_index regclass;
 BEGIN
   -- corrupt _timescaledb_catalog.chunk_column_stats entries
   SELECT count(*) INTO v_count FROM _timescaledb_catalog.chunk_column_stats WHERE range_start > range_end;
@@ -105,6 +107,30 @@ BEGIN
   IF v_count > 0 THEN
     RAISE WARNING 'Found % orphaned chunk relations: %', v_count, v_rels[1:20];
   END IF;
+
+  -- unique indexes defined on the hypertable that are not present on all chunks
+  FOR v_hypertable, v_index, v_rels IN
+    SELECT c.oid::regclass hypertable, ht_i.indexrelid::regclass, array_agg(c_ch.oid::regclass)
+    FROM _timescaledb_catalog.hypertable ht
+    JOIN pg_class c ON c.relname=ht.table_name
+    JOIN pg_namespace nsp ON c.relnamespace=nsp.oid AND nsp.nspname=ht.schema_name
+    JOIN pg_index ht_i ON ht_i.indrelid=c.oid AND ht_i.indisunique
+    JOIN _timescaledb_catalog.chunk ch ON ch.hypertable_id=ht.id
+    JOIN pg_class c_ch ON c_ch.relname=ch.table_name
+    JOIN pg_namespace nsp_ch ON c_ch.relnamespace=nsp_ch.oid
+    WHERE
+      NOT EXISTS(
+        SELECT FROM pg_index ch_i
+        WHERE
+          ch_i.indrelid=c_ch.oid AND
+          ch_i.indisunique AND
+          ch_i.indisvalid AND
+          (SELECT array_agg(attname ORDER BY attnum) FROM pg_attribute att WHERE att.attrelid=c.oid AND attnum =ANY(ht_i.indkey)) = (SELECT array_agg(attname ORDER BY attnum) FROM pg_attribute att WHERE att.attrelid=c_ch.oid AND attnum =ANY(ch_i.indkey)))
+    GROUP BY c.oid, ht_i.indexrelid
+  LOOP
+    RAISE WARNING 'Hypertable % unique index % missing on chunks %', v_hypertable, v_index, v_rels[1:20];
+  END LOOP;
+
 END
 $$;
 
