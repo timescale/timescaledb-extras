@@ -237,7 +237,9 @@ BEGIN
   SET LOCAL search_path TO pg_catalog, pg_temp;
 
   -- continuous aggregates with large materialization ranges
-  IF EXISTS(SELECT FROM pg_class c JOIN pg_namespace nsp ON c.relnamespace=nsp.oid AND nspname = '_timescaledb_catalog' WHERE relname='continuous_aggs_materialization_ranges') THEN
+  IF EXISTS(SELECT FROM pg_class c JOIN pg_namespace nsp ON c.relnamespace=nsp.oid AND nspname = '_timescaledb_catalog' WHERE relname='continuous_aggs_materialization_ranges') AND
+    EXISTS(SELECT FROM pg_proc p JOIN pg_namespace nsp ON p.pronamespace=nsp.oid AND nsp.nspname = '_timescaledb_functions' WHERE proname='cagg_get_bucket_function_info')
+  THEN
     FOR v_cagg, v_range IN
       SELECT
         format('%I.%I', c.user_view_schema, c.user_view_name)::regclass AS continuous_aggregate,
