@@ -59,9 +59,11 @@ BEGIN
   END IF;
 
   -- check for continuous aggregates using non-finalized form
-  PERFORM FROM _timescaledb_catalog.continuous_agg WHERE NOT finalized;
-  IF FOUND THEN
-    RAISE WARNING 'Found continuous aggregates using deprecated non-finalized form.';
+  IF EXISTS(SELECT FROM pg_attribute a JOIN pg_class c ON c.relname='continuous_agg' AND c.oid=a.attrelid JOIN pg_namespace n ON n.nspname='_timescaledb_catalog' AND n.oid=c.relnamespace WHERE attname='finalized') THEN
+    PERFORM FROM _timescaledb_catalog.continuous_agg WHERE NOT finalized;
+    IF FOUND THEN
+      RAISE WARNING 'Found continuous aggregates using deprecated non-finalized form.';
+    END IF;
   END IF;
 END
 $$;
