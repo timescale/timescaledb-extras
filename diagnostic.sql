@@ -219,14 +219,16 @@ END
 $$;
 
 -- continuous aggregate checks
--- continuous aggregates with large materialization ranges
 DO $$
 DECLARE
   v_cagg regclass;
   v_range text;
+  v_cagg_width text;
+  v_chunk_width text;
 BEGIN
   SET LOCAL search_path TO pg_catalog, pg_temp;
 
+  -- continuous aggregates with large materialization ranges
   FOR v_cagg, v_range IN
     SELECT
       format('%I.%I', c.user_view_schema, c.user_view_name)::regclass AS continuous_aggregate,
@@ -246,18 +248,18 @@ BEGIN
   LOOP
     RAISE WARNING 'Continuous aggregate % has large materialization range ''%''.', v_cagg, v_range;
   END LOOP;
-END
-$$;
 
--- continuous aggregates with chunk interval smaller than bucket width
-DO $$
-DECLARE
-  v_cagg regclass;
-  v_cagg_width text;
-  v_chunk_width text;
-BEGIN
-  SET LOCAL search_path TO pg_catalog, pg_temp;
+  -- hypertable with invalidation threshold in the future
+  IF EXISTS(SELECT FROM _timescaledb_catalog.continuous_aggs_invalidation_threshold WHERE _timescaledb_functions.to_timestamp(watermark) > now()) THEN
+    RAISE WARNING 'Found hypertables with invalidation threshold in the future: %', (
+      SELECT array_agg(format('%s: %s', format('%I.%I',ht.schema_name,ht.table_name), _timescaledb_functions.to_timestamp(watermark)))
+      FROM _timescaledb_catalog.continuous_aggs_invalidation_threshold i
+      JOIN _timescaledb_catalog.hypertable ht ON ht.id = i.hypertable_id
+      WHERE _timescaledb_functions.to_timestamp(watermark) > now()
+    );
+  END IF;
 
+  -- continuous aggregates with chunk interval smaller than bucket width
   FOR v_cagg, v_chunk_width, v_cagg_width IN
     SELECT
       format('%I.%I', c.user_view_schema, c.user_view_name)::regclass AS continuous_aggregate,
