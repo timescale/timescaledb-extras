@@ -285,62 +285,62 @@ $$;
 -- compressed chunk batch sizes
 DO $$
 DECLARE
-    v_hypertable_id int;
-    v_hypertable regclass;
-    v_chunk regclass;
-    v_compressed_chunk regclass;
-    v_batch_sub100 int8;
-    v_batch_sub100_pct float;
-    v_batch_sub100_avg float;
-    v_batch_total  int8;
-    v_chunks_sub100 int8;
-    v_chunks_total int8;
-    v_returned_rows int;
+  v_hypertable_id int;
+  v_hypertable regclass;
+  v_chunk regclass;
+  v_compressed_chunk regclass;
+  v_batch_sub100 int8;
+  v_batch_sub100_pct float;
+  v_batch_sub100_avg float;
+  v_batch_total  int8;
+  v_chunks_sub100 int8;
+  v_chunks_total int8;
+  v_returned_rows int;
 BEGIN
   SET LOCAL search_path TO pg_catalog, pg_temp;
 
-    FOR v_hypertable_id, v_hypertable IN SELECT id, format('%I.%I',schema_name, table_name)::regclass FROM _timescaledb_catalog.hypertable WHERE compressed_hypertable_id IS NOT NULL
+  FOR v_hypertable_id, v_hypertable IN SELECT id, format('%I.%I',schema_name, table_name)::regclass FROM _timescaledb_catalog.hypertable WHERE compressed_hypertable_id IS NOT NULL
+  LOOP
+    v_chunks_total := 0;
+    v_chunks_sub100 := 0;
+
+    RAISE NOTICE 'Checking hypertable %', v_hypertable;
+    FOR v_chunk, v_compressed_chunk IN
+      SELECT
+        format('%I.%I',ch.schema_name, ch.table_name) chunk,
+        format('%I.%I',ch2.schema_name, ch2.table_name) compressed
+      FROM _timescaledb_catalog.chunk ch
+      JOIN pg_class c_ch ON c_ch.relname = ch.table_name AND c_ch.relnamespace = ch.schema_name::regnamespace
+      JOIN _timescaledb_catalog.chunk ch2 ON ch2.id = ch.compressed_chunk_id
+      JOIN pg_class c_ch2 ON c_ch2.relname = ch2.table_name AND c_ch2.relnamespace = ch2.schema_name::regnamespace
+      WHERE ch.hypertable_id = v_hypertable_id
     LOOP
-        v_chunks_total := 0;
-        v_chunks_sub100 := 0;
+      RAISE DEBUG '  Checking chunk: %', v_chunk;
+      v_chunks_total := v_chunks_total + 1;
 
-        RAISE NOTICE 'Checking hypertable %', v_hypertable;
-        FOR v_chunk, v_compressed_chunk IN
-          SELECT
-            format('%I.%I',ch.schema_name, ch.table_name) chunk,
-            format('%I.%I',ch2.schema_name, ch2.table_name) compressed
-          FROM _timescaledb_catalog.chunk ch
-          JOIN pg_class c_ch ON c_ch.relname = ch.table_name AND c_ch.relnamespace = ch.schema_name::regnamespace
-          JOIN _timescaledb_catalog.chunk ch2 ON ch2.id = ch.compressed_chunk_id
-          JOIN pg_class c_ch2 ON c_ch2.relname = ch2.table_name AND c_ch2.relnamespace = ch2.schema_name::regnamespace
-          WHERE ch.hypertable_id = v_hypertable_id
-        LOOP
-            RAISE DEBUG '  Checking chunk: %', v_chunk;
-            v_chunks_total := v_chunks_total + 1;
+      -- check if batch has more than 20% of batches with less than 100 tuples
+      EXECUTE format('
+        SELECT
+          count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100) batch_sub100,
+          avg(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100) batch_sub100_avg,
+          (count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100)/count(_ts_meta_count)::float) * 100 batch_sub100_pct,
+          count(_ts_meta_count) batch_total
+        FROM %s HAVING (count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100)/count(_ts_meta_count)::float) > 0.2;
+      ', v_compressed_chunk) INTO v_batch_sub100, v_batch_sub100_avg, v_batch_sub100_pct, v_batch_total;
 
-            -- check if batch has more than 20% of batches with less than 100 tuples
-            EXECUTE format('
-              SELECT
-                count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100) batch_sub100,
-                avg(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100) batch_sub100_avg,
-                (count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100)/count(_ts_meta_count)::float) * 100 batch_sub100_pct,
-                count(_ts_meta_count) batch_total
-              FROM %s HAVING (count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100)/count(_ts_meta_count)::float) > 0.2;
-            ', v_compressed_chunk) INTO v_batch_sub100, v_batch_sub100_avg, v_batch_sub100_pct, v_batch_total;
-
-            GET DIAGNOSTICS v_returned_rows = ROW_COUNT;
-            IF v_returned_rows > 0 THEN
-                v_chunks_sub100 := v_chunks_sub100 + 1;
-                -- only print first 5 warnings to avoid flooding
-                IF v_chunks_sub100 <= 5 THEN
-                    RAISE WARNING '  Chunk % has %/% (% %% avg %) batches with less than 100 tuples.', v_chunk, v_batch_sub100, v_batch_total, v_batch_sub100_pct::decimal(4,1), v_batch_sub100_avg::decimal(4,1);
-                END IF;
-            END IF;
-        END LOOP;
-        IF v_chunks_sub100 > 0 THEN
-            RAISE WARNING '%/% chunks found with more than 20%% of batches having less than 100 tuples in %.', v_chunks_sub100, v_chunks_total, v_hypertable;
+      GET DIAGNOSTICS v_returned_rows = ROW_COUNT;
+      IF v_returned_rows > 0 THEN
+        v_chunks_sub100 := v_chunks_sub100 + 1;
+        -- only print first 5 warnings to avoid flooding
+        IF v_chunks_sub100 <= 5 THEN
+          RAISE WARNING '  Chunk % has %/% (% %% avg %) batches with less than 100 tuples.', v_chunk, v_batch_sub100, v_batch_total, v_batch_sub100_pct::decimal(4,1), v_batch_sub100_avg::decimal(4,1);
         END IF;
+      END IF;
     END LOOP;
+    IF v_chunks_sub100 > 0 THEN
+      RAISE WARNING '%/% chunks found with more than 20%% of batches having less than 100 tuples in %.', v_chunks_sub100, v_chunks_total, v_hypertable;
+    END IF;
+  END LOOP;
 END
 $$;
 
