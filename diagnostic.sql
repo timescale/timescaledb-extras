@@ -237,25 +237,27 @@ BEGIN
   SET LOCAL search_path TO pg_catalog, pg_temp;
 
   -- continuous aggregates with large materialization ranges
-  FOR v_cagg, v_range IN
-    SELECT
-      format('%I.%I', c.user_view_schema, c.user_view_name)::regclass AS continuous_aggregate,
+  IF EXISTS(SELECT FROM pg_class c JOIN pg_namespace nsp ON c.relnamespace=nsp.oid AND nspname = '_timescaledb_catalog' WHERE relname='continuous_aggs_materialization_ranges') THEN
+    FOR v_cagg, v_range IN
+      SELECT
+        format('%I.%I', c.user_view_schema, c.user_view_name)::regclass AS continuous_aggregate,
+        CASE
+          WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN (r.greatest_modified_value - r.lowest_modified_value)::text
+          WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(r.greatest_modified_value - r.lowest_modified_value)::text
+        END AS range
+      FROM _timescaledb_catalog.continuous_aggs_materialization_ranges r
+      JOIN _timescaledb_catalog.continuous_agg c ON c.mat_hypertable_id=r.materialization_id
+      JOIN LATERAL(SELECT * FROM _timescaledb_functions.cagg_get_bucket_function_info(c.mat_hypertable_id)) f on true
+      JOIN _timescaledb_catalog.dimension d ON d.hypertable_id=c.mat_hypertable_id
+      WHERE
       CASE
-        WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN (r.greatest_modified_value - r.lowest_modified_value)::text
-        WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(r.greatest_modified_value - r.lowest_modified_value)::text
-      END AS range
-    FROM _timescaledb_catalog.continuous_aggs_materialization_ranges r
-    JOIN _timescaledb_catalog.continuous_agg c ON c.mat_hypertable_id=r.materialization_id
-    JOIN LATERAL(SELECT * FROM _timescaledb_functions.cagg_get_bucket_function_info(c.mat_hypertable_id)) f on true
-    JOIN _timescaledb_catalog.dimension d ON d.hypertable_id=c.mat_hypertable_id
-    WHERE
-    CASE
-      WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN (r.greatest_modified_value - r.lowest_modified_value) > 250 * f.bucket_width::int
-      WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(r.greatest_modified_value - r.lowest_modified_value) > 250 * f.bucket_width::interval
-    END
-  LOOP
-    RAISE WARNING 'Continuous aggregate % has large materialization range ''%''.', v_cagg, v_range;
-  END LOOP;
+        WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN (r.greatest_modified_value - r.lowest_modified_value) > 250 * f.bucket_width::int
+        WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(r.greatest_modified_value - r.lowest_modified_value) > 250 * f.bucket_width::interval
+      END
+    LOOP
+      RAISE WARNING 'Continuous aggregate % has large materialization range ''%''.', v_cagg, v_range;
+    END LOOP;
+  END IF;
 
   -- hypertable with invalidation threshold in the future
   IF EXISTS(SELECT FROM _timescaledb_catalog.continuous_aggs_invalidation_threshold WHERE _timescaledb_functions.to_timestamp(watermark) > now()) THEN
