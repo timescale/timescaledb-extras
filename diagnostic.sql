@@ -90,9 +90,11 @@ BEGIN
   SET LOCAL search_path TO pg_catalog, pg_temp;
 
   -- corrupt _timescaledb_catalog.chunk_column_stats entries
-  SELECT count(*) INTO v_count FROM _timescaledb_catalog.chunk_column_stats WHERE range_start > range_end;
-  IF v_count >= 1 THEN
-    RAISE WARNING 'Found %s entries in _timescaledb_catalog.chunk_column_stats with range_start > range_end', v_count;
+  IF EXISTS(SELECT FROM pg_class c JOIN pg_namespace nsp ON c.relnamespace=nsp.oid AND nspname = '_timescaledb_catalog' WHERE relname='chunk_column_stats') THEN
+    SELECT count(*) INTO v_count FROM _timescaledb_catalog.chunk_column_stats WHERE range_start > range_end;
+    IF v_count >= 1 THEN
+      RAISE WARNING 'Found %s entries in _timescaledb_catalog.chunk_column_stats with range_start > range_end', v_count;
+    END IF;
   END IF;
 
   -- chunks with missing relations
