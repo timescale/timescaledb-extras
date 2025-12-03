@@ -23,6 +23,25 @@
 --   - continuous aggregate large materialization ranges
 --   - continuous aggregate chunk interval vs bucket width
 
+-- information
+
+DO $$
+DECLARE
+  v_count int;
+  v_settings text[];
+BEGIN
+  SET LOCAL search_path TO pg_catalog, pg_temp;
+  RAISE INFO 'PostgreSQL: % TimescaleDB: %', current_setting('server_version'), (SELECT extversion FROM pg_extension WHERE extname='timescaledb');
+
+  -- non-default timescaledb settings
+  SELECT count(*), array_agg(format('%s:%s',s.name, pg_catalog.current_setting(s.name)) ORDER BY s.name) INTO v_count, v_settings
+  FROM pg_catalog.pg_settings s
+  WHERE s.name LIKE 'timescaledb.%' AND s.source <> 'default' AND s.setting IS DISTINCT FROM s.boot_val;
+  IF v_count > 0 THEN
+    RAISE INFO 'Non-default TimescaleDB settings: %', v_settings;
+  END IF;
+END
+$$;
 
 -- deprecated features
 DO $$
