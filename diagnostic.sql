@@ -201,25 +201,27 @@ BEGIN
   SET LOCAL search_path TO pg_catalog, pg_temp;
 
   -- check for job failures in the last 7 days
-  SELECT
-    count(*) FILTER (WHERE NOT succeeded) AS failed,
-    count(succeeded) AS total,
-    count(DISTINCT job_id) FILTER (WHERE NOT succeeded) failed_distinct
-  INTO v_failed, v_total, v_failed_distinct
-  FROM _timescaledb_internal.bgw_job_stat_history
-  WHERE execution_start > now() - '7 day'::interval;
-  IF v_failed > 0 THEN
-    RAISE WARNING '%/% job executions of % distinct jobs failed in last 7 days', v_failed, v_total, v_failed_distinct;
-    FOR v_job_id, v_count, v_job_name IN
-      SELECT job_id, count(*) AS count, (SELECT application_name FROM _timescaledb_config.bgw_job WHERE id = job_id) AS job_name
-      FROM _timescaledb_internal.bgw_job_stat_history
-      WHERE execution_start > now() - '7 day'::interval AND NOT succeeded
-      GROUP BY job_id
-      ORDER BY count DESC
-      LIMIT 5
-    LOOP
-      RAISE WARNING '  Job % had % failures', v_job_name, v_count;
-    END LOOP;
+  IF EXISTS(SELECT FROM pg_class c JOIN pg_namespace nsp ON c.relnamespace=nsp.oid AND nspname = '_timescaledb_internal' WHERE relname='bgw_job_stat_history') THEN
+    SELECT
+      count(*) FILTER (WHERE NOT succeeded) AS failed,
+      count(succeeded) AS total,
+      count(DISTINCT job_id) FILTER (WHERE NOT succeeded) failed_distinct
+    INTO v_failed, v_total, v_failed_distinct
+    FROM _timescaledb_internal.bgw_job_stat_history
+    WHERE execution_start > now() - '7 day'::interval;
+    IF v_failed > 0 THEN
+      RAISE WARNING '%/% job executions of % distinct jobs failed in last 7 days', v_failed, v_total, v_failed_distinct;
+      FOR v_job_id, v_count, v_job_name IN
+        SELECT job_id, count(*) AS count, (SELECT application_name FROM _timescaledb_config.bgw_job WHERE id = job_id) AS job_name
+        FROM _timescaledb_internal.bgw_job_stat_history
+        WHERE execution_start > now() - '7 day'::interval AND NOT succeeded
+        GROUP BY job_id
+        ORDER BY count DESC
+        LIMIT 5
+      LOOP
+        RAISE WARNING '  Job % had % failures', v_job_name, v_count;
+      END LOOP;
+    END IF;
   END IF;
 END
 $$;
