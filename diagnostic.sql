@@ -23,11 +23,12 @@
 --   - continuous aggregate large materialization ranges
 --   - continuous aggregate chunk interval vs bucket width
 
-SET search_path TO pg_catalog, pg_temp;
 
 -- deprecated features
 DO $$
 BEGIN
+  SET LOCAL search_path TO pg_catalog, pg_temp;
+
   -- check for hypertables with hypercore access method
   PERFORM FROM pg_class c join pg_am am ON c.relam=am.oid AND am.amname='hypercore' LIMIT 1;
   IF FOUND THEN
@@ -45,6 +46,8 @@ $$;
 -- undesirable settings
 DO $$
 BEGIN
+  SET LOCAL search_path TO pg_catalog, pg_temp;
+
   IF current_setting('timescaledb.restoring')::bool THEN
     RAISE WARNING 'timescaledb.restoring is enabled. This setting should only be enabled during maintenance operations.';
   END IF;
@@ -61,6 +64,8 @@ DECLARE
   v_hypertable regclass;
   v_index regclass;
 BEGIN
+  SET LOCAL search_path TO pg_catalog, pg_temp;
+
   -- corrupt _timescaledb_catalog.chunk_column_stats entries
   SELECT count(*) INTO v_count FROM _timescaledb_catalog.chunk_column_stats WHERE range_start > range_end;
   IF v_count >= 1 THEN
@@ -139,6 +144,8 @@ DO $$
 DECLARE
   v_count int8;
 BEGIN
+  SET LOCAL search_path TO pg_catalog, pg_temp;
+
   IF NOT pg_is_in_recovery() THEN
     PERFORM FROM pg_stat_activity WHERE application_name = 'TimescaleDB Background Worker Launcher';
     IF NOT FOUND THEN
@@ -166,6 +173,8 @@ DECLARE
   v_count int;
   v_job_name text;
 BEGIN
+  SET LOCAL search_path TO pg_catalog, pg_temp;
+
   -- check for job failures in the last 7 days
   SELECT
     count(*) FILTER (WHERE NOT succeeded) AS failed,
@@ -197,6 +206,8 @@ DECLARE
   v_cagg regclass;
   v_range text;
 BEGIN
+  SET LOCAL search_path TO pg_catalog, pg_temp;
+
   FOR v_cagg, v_range IN
     SELECT
       format('%I.%I', c.user_view_schema, c.user_view_name)::regclass AS continuous_aggregate,
@@ -226,6 +237,8 @@ DECLARE
   v_cagg_width text;
   v_chunk_width text;
 BEGIN
+  SET LOCAL search_path TO pg_catalog, pg_temp;
+
   FOR v_cagg, v_chunk_width, v_cagg_width IN
     SELECT
       format('%I.%I', c.user_view_schema, c.user_view_name)::regclass AS continuous_aggregate,
@@ -265,6 +278,8 @@ DECLARE
     v_chunks_total int8;
     v_returned_rows int;
 BEGIN
+  SET LOCAL search_path TO pg_catalog, pg_temp;
+
     FOR v_hypertable_id, v_hypertable IN SELECT id, format('%I.%I',schema_name, table_name)::regclass FROM _timescaledb_catalog.hypertable WHERE compressed_hypertable_id IS NOT NULL
     LOOP
         v_chunks_total := 0;
@@ -310,4 +325,3 @@ BEGIN
 END
 $$;
 
-RESET search_path;
