@@ -276,25 +276,27 @@ BEGIN
   END IF;
 
   -- continuous aggregates with chunk interval smaller than bucket width
-  FOR v_cagg, v_chunk_width, v_cagg_width IN
-    SELECT
-      format('%I.%I', c.user_view_schema, c.user_view_name)::regclass AS continuous_aggregate,
-      CASE
-        WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN d.interval_length::text
-        WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(d.interval_length)::text
-      END AS chunk_width,
-      f.bucket_width cagg_width
-    FROM _timescaledb_catalog.continuous_agg c
-    JOIN LATERAL(SELECT * FROM _timescaledb_functions.cagg_get_bucket_function_info(c.mat_hypertable_id)) f on true
-    JOIN _timescaledb_catalog.dimension d ON d.hypertable_id=c.mat_hypertable_id
-    WHERE
-      CASE
-        WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN d.interval_length <= f.bucket_width::int
-        WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(d.interval_length) <= f.bucket_width::interval
-      END
-  LOOP
-    RAISE WARNING 'Continuous aggregate % has chunk width smaller than bucket width % <= %', v_cagg, v_chunk_width, v_cagg_width;
-  END LOOP;
+  IF EXISTS(SELECT FROM pg_proc p JOIN pg_namespace nsp ON p.pronamespace=nsp.oid AND nsp.nspname = '_timescaledb_functions' WHERE proname='cagg_get_bucket_function_info') THEN
+    FOR v_cagg, v_chunk_width, v_cagg_width IN
+      SELECT
+        format('%I.%I', c.user_view_schema, c.user_view_name)::regclass AS continuous_aggregate,
+        CASE
+          WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN d.interval_length::text
+          WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(d.interval_length)::text
+        END AS chunk_width,
+        f.bucket_width cagg_width
+      FROM _timescaledb_catalog.continuous_agg c
+      JOIN LATERAL(SELECT * FROM _timescaledb_functions.cagg_get_bucket_function_info(c.mat_hypertable_id)) f on true
+      JOIN _timescaledb_catalog.dimension d ON d.hypertable_id=c.mat_hypertable_id
+      WHERE
+        CASE
+          WHEN d.column_type =ANY('{int4,int8}'::regtype[]) THEN d.interval_length <= f.bucket_width::int
+          WHEN d.column_type =ANY('{timestamp,timestamptz}'::regtype[]) THEN _timescaledb_functions.to_interval(d.interval_length) <= f.bucket_width::interval
+        END
+    LOOP
+      RAISE WARNING 'Continuous aggregate % has chunk width smaller than bucket width % <= %', v_cagg, v_chunk_width, v_cagg_width;
+    END LOOP;
+  END IF;
 END
 $$;
 
