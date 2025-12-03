@@ -260,13 +260,15 @@ BEGIN
   END IF;
 
   -- hypertable with invalidation threshold in the future
-  IF EXISTS(SELECT FROM _timescaledb_catalog.continuous_aggs_invalidation_threshold WHERE _timescaledb_functions.to_timestamp(watermark) > now()) THEN
-    RAISE WARNING 'Found hypertables with invalidation threshold in the future: %', (
-      SELECT array_agg(format('%s: %s', format('%I.%I',ht.schema_name,ht.table_name), _timescaledb_functions.to_timestamp(watermark)))
-      FROM _timescaledb_catalog.continuous_aggs_invalidation_threshold i
-      JOIN _timescaledb_catalog.hypertable ht ON ht.id = i.hypertable_id
-      WHERE _timescaledb_functions.to_timestamp(watermark) > now()
-    );
+  IF EXISTS(SELECT FROM pg_class c JOIN pg_namespace nsp ON c.relnamespace=nsp.oid AND nspname = '_timescaledb_catalog' WHERE relname='continuous_aggs_invalidation_threshold') THEN
+    IF EXISTS(SELECT FROM _timescaledb_catalog.continuous_aggs_invalidation_threshold WHERE _timescaledb_functions.to_timestamp(watermark) > now()) THEN
+      RAISE WARNING 'Found hypertables with invalidation threshold in the future: %', (
+        SELECT array_agg(format('%s: %s', format('%I.%I',ht.schema_name,ht.table_name), _timescaledb_functions.to_timestamp(watermark)))
+        FROM _timescaledb_catalog.continuous_aggs_invalidation_threshold i
+        JOIN _timescaledb_catalog.hypertable ht ON ht.id = i.hypertable_id
+        WHERE _timescaledb_functions.to_timestamp(watermark) > now()
+      );
+    END IF;
   END IF;
 
   -- continuous aggregates with chunk interval smaller than bucket width
