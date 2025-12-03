@@ -4,6 +4,10 @@
 -- collection of diagnostic checks for TimescaleDB
 --
 -- Checks included:
+-- - informational
+--   - PostgreSQL version
+--   - TimescaleDB version
+--   - non-default timescaledb settings
 -- - deprecated features
 --   - hypercore access method
 --   - continuous aggregates non-finalized form
@@ -21,10 +25,10 @@
 --   - compressed batch sizes
 -- - continuous aggregates
 --   - continuous aggregate large materialization ranges
+--   - hypertables with invalidation threshold in the future
 --   - continuous aggregate chunk interval vs bucket width
 
--- information
-
+-- informational
 DO $$
 DECLARE
   v_count int;
