@@ -8,11 +8,11 @@ name: "Verify diagnostic script works"
   workflow_dispatch:
 jobs:
   diagnostic_test:
-    name: Test diagnostic script PG${{ matrix.pg }}
+    name: Test diagnostic script ${{ matrix.image }}
     runs-on: ubuntu-latest
     services:
       ts:
-        image: timescale/timescaledb:latest-pg${{ matrix.pg }}
+        image: timescale/timescaledb:${{ matrix.image }}
         ports:
           - 5432:5432
         env:
@@ -27,7 +27,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pg: [15,16,17,18]
+        image:
+          - "2.10.0-pg15"
+          - "2.13.0-pg15"
+          - "2.17.0-pg15"
+          - "2.23.0-pg15"
+          - "latest-pg15"
+          - "2.13.0-pg16"
+          - "2.17.0-pg16"
+          - "2.23.0-pg16"
+          - "latest-pg16"
+          - "2.17.0-pg17"
+          - "2.23.0-pg17"
+          - "latest-pg17"
+          - "2.23.0-pg18"
+          - "latest-pg18"
 
     steps:
 
@@ -43,8 +57,11 @@ jobs:
         psql -v ON_ERROR_STOP=1 -c "$(cat <<SQL
           SELECT version();
           SELECT extname, extversion from pg_extension;
-          SELECT _timescaledb_functions.stop_background_workers();
-          CREATE TABLE t(time timestamptz) WITH (tsdb.hypertable);
+          SET search_path TO public, _timescaledb_functions, _timescaledb_internal;
+          SELECT stop_background_workers();
+          CREATE TABLE t(time timestamptz);
+          SELECT create_hypertable('t', 'time');
+          ALTER TABLE t SET (timescaledb.compress, timescaledb.compress_segmentby = 'time');
           INSERT INTO t SELECT '2025-01-01';
           INSERT INTO t SELECT '2025-02-01';
           SELECT compress_chunk(show_chunks('t'));
