@@ -65,6 +65,12 @@ BEGIN
       RAISE WARNING 'Found continuous aggregates using deprecated non-finalized form.';
     END IF;
   END IF;
+
+  -- check for wal based invalidation plugin
+  PERFORM FROM pg_replication_slots WHERE plugin LIKE 'timescaledb-invalidations-%';
+  IF FOUND THEN
+    RAISE WARNING 'Found WAL based invalidation plugin.';
+  END IF;
 END
 $$;
 
