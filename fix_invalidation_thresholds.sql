@@ -57,7 +57,7 @@ SELECT * FROM wrong_thresholds;
 
 \echo 'BEFORE: Problematic Materialization Invalidation Log Entries'
 
-CREATE TABLE wrong_invalidations
+CREATE TEMP TABLE wrong_invalidations ON COMMIT DROP
 AS
 SELECT
     il.materialization_id,
