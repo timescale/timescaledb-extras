@@ -38,7 +38,7 @@ LOCK TABLE _timescaledb_catalog.continuous_aggs_watermark IN EXCLUSIVE MODE;
 
 \echo 'BEFORE: Problematic Invalidation Thresholds'
 
-CREATE TABLE wrong_thresholds
+CREATE TEMP TABLE wrong_thresholds ON COMMIT DROP
 AS
 SELECT
     it.hypertable_id,
