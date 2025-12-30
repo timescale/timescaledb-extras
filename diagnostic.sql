@@ -35,6 +35,9 @@ DECLARE
   v_settings text[];
 BEGIN
   SET LOCAL search_path TO pg_catalog, pg_temp;
+  IF current_setting('cloud.service_id', true) IS NOT NULL THEN
+    RAISE INFO 'Project: % Service: %', current_setting('cloud.project_id', true), current_setting('cloud.service_id', true);
+  END IF;
   RAISE INFO 'PostgreSQL: % TimescaleDB: %', current_setting('server_version'), (SELECT extversion FROM pg_extension WHERE extname='timescaledb');
 
   -- non-default timescaledb settings
