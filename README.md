@@ -31,10 +31,10 @@ to just include the views that you're interested in.
 
 ## Documentation and Help
 
-- [Why use TimescaleDB?](https://tsdb.co/GitHubTimescaleIntro)
-- [Writing data](https://tsdb.co/GitHubTimescaleWriteData)
-- [Querying and data analytics](https://tsdb.co/GitHubTimescaleReadData)
-- [Tutorials and sample data](https://tsdb.co/GitHubTimescaleTutorials)
+- [Why use TimescaleDB](https://www.tigerdata.com/case-studies)
+- [Writing data](https://www.tigerdata.com/docs/use-timescale/latest/write-data)
+- [Querying and data analytics](https://www.tigerdata.com/docs/use-timescale/latest/query-data)
+- [Tutorials and sample data](https://www.tigerdata.com/docs/tutorials/latest)
 - [Community Slack Channel](https://slack.timescale.com)
 
 ## Contributing
