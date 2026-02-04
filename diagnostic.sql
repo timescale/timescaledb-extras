@@ -100,6 +100,170 @@ DECLARE
 BEGIN
   SET LOCAL search_path TO pg_catalog, pg_temp;
 
+	-- hypertable with missing compressed hypertable entry
+  SELECT array_agg(format('%I.%I',schema_name,table_name)) INTO v_relnames FROM _timescaledb_catalog.hypertable h1
+  WHERE
+    compressed_hypertable_id IS NOT NULL AND
+    NOT EXISTS(SELECT FROM _timescaledb_catalog.hypertable h2 WHERE h2.id = h1.compressed_hypertable_id);
+  IF v_relnames IS NOT NULL THEN
+    RAISE WARNING 'Found hypertables with missing compressed hypertable catalog entry: %', v_relnames;
+  END IF;
+
+	-- chunk with missing compressed chunk entry
+  SELECT array_agg(format('%I.%I',schema_name,table_name)) INTO v_relnames FROM _timescaledb_catalog.chunk ch1
+  WHERE
+    compressed_chunk_id IS NOT NULL AND
+    NOT EXISTS(SELECT FROM _timescaledb_catalog.chunk ch2 WHERE ch2.id = ch1.compressed_chunk_id);
+  IF v_relnames IS NOT NULL THEN
+    RAISE WARNING 'Found chunks with missing compressed chunk catalog entry: %', v_relnames;
+  END IF;
+
+	-- chunk with missing compressed hypertable entry
+  SELECT array_agg(format('%I.%I',schema_name,table_name)) INTO v_relnames FROM _timescaledb_catalog.chunk ch
+  WHERE
+    NOT EXISTS(SELECT FROM _timescaledb_catalog.hypertable ht WHERE ht.id = ch.hypertable_id);
+  IF v_relnames IS NOT NULL THEN
+    RAISE WARNING 'Found chunks with missing hypertable catalog entry: %', v_relnames;
+  END IF;
+
+  -- orphaned foreign key references in _timescaledb_catalog.tablespace
+  SELECT array_agg(tablespace_name) INTO v_relnames FROM _timescaledb_catalog.tablespace ts
+  WHERE
+    NOT EXISTS(SELECT FROM _timescaledb_catalog.hypertable ht WHERE ht.id = ts.hypertable_id);
+  IF v_relnames IS NOT NULL THEN
+    RAISE WARNING 'Found tablespace entries with missing hypertable catalog entry: %', v_relnames;
+  END IF;
+
+  -- orphaned foreign key references in _timescaledb_catalog.dimension
+  SELECT array_agg(column_name) INTO v_relnames FROM _timescaledb_catalog.dimension dim
+  WHERE
+    NOT EXISTS(SELECT FROM _timescaledb_catalog.hypertable ht WHERE ht.id = dim.hypertable_id);
+  IF v_relnames IS NOT NULL THEN
+    RAISE WARNING 'Found dimension entries with missing hypertable catalog entry: %', v_relnames;
+  END IF;
+
+  -- orphaned foreign key references in _timescaledb_catalog.dimension_slice
+  SELECT array_agg(dimension_id::text) INTO v_relnames FROM _timescaledb_catalog.dimension_slice slice
+  WHERE
+    NOT EXISTS(SELECT FROM _timescaledb_catalog.dimension dim WHERE dim.id = slice.dimension_id);
+  IF v_relnames IS NOT NULL THEN
+    RAISE WARNING 'Found dimension_slice entries with missing dimension catalog entry: %', v_relnames;
+  END IF;
+
+  -- orphaned foreign key references in _timescaledb_catalog.chunk_constraint
+  SELECT array_agg(constraint_name) INTO v_relnames FROM _timescaledb_catalog.chunk_constraint cc
+  WHERE
+    NOT EXISTS(SELECT FROM _timescaledb_catalog.chunk ch WHERE ch.id = cc.chunk_id);
+  IF v_relnames IS NOT NULL THEN
+    RAISE WARNING 'Found chunk_constraint entry with missing chunk catalog entry: %', v_relnames;
+  END IF;
+
+  -- orphaned foreign key references in _timescaledb_catalog.chunk_constraint
+  SELECT array_agg(constraint_name) INTO v_relnames FROM _timescaledb_catalog.chunk_constraint cc
+  WHERE
+    NOT EXISTS(SELECT FROM _timescaledb_catalog.dimension_slice ds WHERE ds.id = cc.dimension_slice_id);
+  IF v_relnames IS NOT NULL THEN
+    RAISE WARNING 'Found chunk_constraint entry with missing dimension slice catalog entry: %', v_relnames;
+  END IF;
+
+  -- orphaned foreign key references in _timescaledb_catalog.chunk_column_stats
+  IF EXISTS(SELECT FROM pg_class c JOIN pg_namespace nsp ON c.relnamespace=nsp.oid AND nspname = '_timescaledb_catalog' WHERE relname='chunk_column_stats') THEN
+    IF EXISTS(SELECT FROM _timescaledb_catalog.chunk_column_stats ccs
+      WHERE
+        NOT EXISTS(SELECT FROM _timescaledb_catalog.hypertable ht WHERE ht.id = ccs.hypertable_id)
+        OR NOT EXISTS(SELECT FROM _timescaledb_catalog.chunk ch WHERE ch.id = ccs.chunk_id)) THEN
+      RAISE WARNING 'Found chunk_column_stats entries with missing hypertable or chunk catalog entry.';
+    END IF;
+  END IF;
+
+  -- orphaned foreign key references in bgw_job
+  SET LOCAL search_path TO pg_catalog, _timescaledb_config, _timescaledb_catalog, pg_temp;
+  SELECT array_agg(application_name) INTO v_relnames FROM bgw_job j
+  WHERE
+    hypertable_id IS NOT NULL AND
+    NOT EXISTS(SELECT FROM _timescaledb_catalog.hypertable ht WHERE ht.id = j.hypertable_id);
+  IF v_relnames IS NOT NULL THEN
+    RAISE WARNING 'Found chunk_constraint entry with missing dimension slice catalog entry: %', v_relnames;
+  END IF;
+
+  -- orphaned foreign key references in bgw_job_stat
+  IF EXISTS(SELECT FROM _timescaledb_internal.bgw_job_stat js WHERE NOT EXISTS(SELECT FROM bgw_job j WHERE j.id = js.job_id)) THEN
+    RAISE WARNING 'Found orphaned bgw_job_stat entry';
+  END IF;
+
+  -- orphaned foreign key references in bgw_policy_chunk_stats
+  IF EXISTS(SELECT FROM _timescaledb_internal.bgw_policy_chunk_stats cs
+    WHERE
+      NOT EXISTS(SELECT FROM _timescaledb_catalog.chunk ch WHERE ch.id = cs.chunk_id)
+      OR NOT EXISTS(SELECT FROM bgw_job j WHERE j.id = cs.job_id)) THEN
+    RAISE WARNING 'Found orphaned bgw_policy_chunk_stats entry';
+  END IF;
+  SET LOCAL search_path TO pg_catalog, pg_temp;
+
+  -- orphaned foreign key references in _timescaledb_catalog.continuous_agg
+  IF EXISTS(
+    SELECT FROM _timescaledb_catalog.continuous_agg cagg
+      WHERE
+        NOT EXISTS(SELECT FROM _timescaledb_catalog.hypertable ht WHERE ht.id = cagg.raw_hypertable_id)
+        OR (parent_mat_hypertable_id IS NOT NULL AND NOT EXISTS(SELECT FROM _timescaledb_catalog.hypertable ht WHERE ht.id = cagg.parent_mat_hypertable_id))
+        OR NOT EXISTS(SELECT FROM _timescaledb_catalog.hypertable ht WHERE ht.id = cagg.mat_hypertable_id)
+  ) THEN
+    RAISE WARNING 'Found continuous_agg entries with missing hypertable catalog entry.';
+  END IF;
+
+  -- orphaned foreign key references in _timescaledb_catalog.continuous_aggs_hypertable_invalidation_log
+  IF EXISTS(
+    SELECT FROM _timescaledb_catalog.continuous_aggs_hypertable_invalidation_log l
+    WHERE NOT EXISTS (SELECT FROM _timescaledb_catalog.hypertable ht WHERE ht.id = l.hypertable_id)
+  ) THEN
+    RAISE WARNING 'Found continuous_aggs_hypertable_invalidation_log entries with missing hypertable catalog entry.';
+  END IF;
+
+  -- orphaned foreign key references in _timescaledb_catalog.continuous_aggs_invalidation_threshold
+  IF EXISTS(
+    SELECT FROM _timescaledb_catalog.continuous_aggs_invalidation_threshold t
+    WHERE NOT EXISTS (SELECT FROM _timescaledb_catalog.hypertable ht WHERE ht.id = t.hypertable_id)
+  ) THEN
+    RAISE WARNING 'Found continuous_aggs_invalidation_threshold entries with missing hypertable catalog entry.';
+  END IF;
+
+  -- orphaned foreign key references in _timescaledb_catalog.continuous_aggs_watermark
+  IF EXISTS(SELECT FROM pg_class c JOIN pg_namespace nsp ON c.relnamespace=nsp.oid AND nspname = '_timescaledb_catalog' WHERE relname='continuous_aggs_watermark') THEN
+    IF EXISTS(
+      SELECT FROM _timescaledb_catalog.continuous_aggs_watermark w
+      WHERE NOT EXISTS (SELECT FROM _timescaledb_catalog.hypertable ht WHERE ht.id = w.mat_hypertable_id)
+    ) THEN
+      RAISE WARNING 'Found continuous_aggs_watermark entries with missing hypertable catalog entry.';
+    END IF;
+  END IF;
+
+  -- orphaned foreign key references in _timescaledb_catalog.continuous_aggs_materialization_invalidation_log
+  IF EXISTS(
+    SELECT FROM _timescaledb_catalog.continuous_aggs_materialization_invalidation_log l
+    WHERE NOT EXISTS (SELECT FROM _timescaledb_catalog.continuous_agg cagg WHERE cagg.mat_hypertable_id = l.materialization_id)
+  ) THEN
+    RAISE WARNING 'Found continuous_aggs_materialization_invalidation_log entries with missing continuous_agg catalog entry.';
+  END IF;
+
+  -- orphaned foreign key references in _timescaledb_catalog.continuous_aggs_materialization_ranges
+  IF EXISTS(SELECT FROM pg_class c JOIN pg_namespace nsp ON c.relnamespace=nsp.oid AND nspname = '_timescaledb_catalog' WHERE relname='continuous_aggs_materialization_ranges') THEN
+    IF EXISTS(
+      SELECT FROM _timescaledb_catalog.continuous_aggs_materialization_ranges r
+      WHERE NOT EXISTS (SELECT FROM _timescaledb_catalog.continuous_agg cagg WHERE cagg.mat_hypertable_id = r.materialization_id)
+    ) THEN
+      RAISE WARNING 'Found continuous_aggs_materialization_invalidation_log entries with missing continuous_agg catalog entry.';
+    END IF;
+  END IF;
+
+  -- orphaned foreign key references in _timescaledb_catalog.compression_chunk_size
+  IF EXISTS(SELECT FROM _timescaledb_catalog.compression_chunk_size cs
+    WHERE
+      NOT EXISTS(SELECT FROM _timescaledb_catalog.chunk ch WHERE ch.id = cs.chunk_id)
+      OR NOT EXISTS(SELECT FROM _timescaledb_catalog.chunk ch WHERE ch.id = cs.compressed_chunk_id)
+  ) THEN
+    RAISE WARNING 'Found compression_chunk_size entries with missing chunk catalog entry.';
+  END IF;
+
   -- corrupt _timescaledb_catalog.chunk_column_stats entries
   IF EXISTS(SELECT FROM pg_class c JOIN pg_namespace nsp ON c.relnamespace=nsp.oid AND nspname = '_timescaledb_catalog' WHERE relname='chunk_column_stats') THEN
     SELECT count(*) INTO v_count FROM _timescaledb_catalog.chunk_column_stats WHERE range_start > range_end;
