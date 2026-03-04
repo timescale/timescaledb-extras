@@ -163,7 +163,7 @@ BEGIN
   WHERE
     NOT EXISTS(SELECT FROM _timescaledb_catalog.dimension_slice ds WHERE ds.id = cc.dimension_slice_id);
   IF v_relnames IS NOT NULL THEN
-    RAISE WARNING 'Found chunk_constraint entry with missing dimension slice catalog entry: %', v_relnames;
+    RAISE WARNING 'Found % chunk_constraint entry with missing dimension slice catalog entry: %', array_length(v_relnames,1), v_relnames[1:20];
   END IF;
 
   -- orphaned foreign key references in _timescaledb_catalog.chunk_column_stats
