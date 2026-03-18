@@ -1,6 +1,9 @@
 SET timezone = 'UTC';
 \pset pager off
 
+SET client_min_messages TO NOTICE;
+SELECT * FROM  _timescaledb_catalog.continuous_aggs_hypertable_invalidation_log;
+
 -- ============================================================
 -- Test 1: Verify generated refresh statement works as expected
 -- when there are gaps in the CAgg
@@ -15,6 +18,7 @@ SELECT
     1000.0 AS pressure
 FROM generate_series(0, 11) AS i;
 
+SELECT * FROM  hyper_invlog_view;
 -- Truncate the invalidation log and insert a pending range to cover the same window to simulate a gap
 TRUNCATE _timescaledb_catalog.continuous_aggs_hypertable_invalidation_log;
 
@@ -112,6 +116,7 @@ FROM (
     SELECT generate_series('2026-01-06 00:00:00+00'::timestamptz, '2026-01-06 16:00:00+00'::timestamptz, INTERVAL '4 hours')
 ) sub;
 
+SELECT * FROM  hyper_invlog_view;
 TRUNCATE _timescaledb_catalog.continuous_aggs_hypertable_invalidation_log;
 
 -- Insert two overlapping ranges:

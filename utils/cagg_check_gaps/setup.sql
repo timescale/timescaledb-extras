@@ -56,5 +56,19 @@ WITH NO DATA;
 
 CALL refresh_continuous_aggregate('sensor_daily_avg', NULL, NULL);
 
+CREATE OR REPLACE VIEW hyper_invlog_view
+AS
+SELECT 
+    materialization_id,
+    CASE
+        WHEN lowest_modified_value = -9223372036854775808 THEN '-infinity'
+        ELSE to_timestamp(lowest_modified_value / 1000000)::text
+    END AS lowest_modified,
+    CASE
+        WHEN greatest_modified_value = 9223372036854775807 THEN 'infinity'
+        ELSE to_timestamp(greatest_modified_value / 1000000)::text
+    END AS greatest_modified
+FROM _timescaledb_catalog.continuous_aggs_materialization_invalidation_log ;
+
 -- Load the view and function
 \i cagg_manual_refresh_ranges.sql
