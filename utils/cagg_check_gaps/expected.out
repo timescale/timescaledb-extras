@@ -60,7 +60,7 @@ ORDER BY bucket, sensor_id;
 
 
 === Pending ranges ===
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
         cagg_name         | lowest_modified_value  | greatest_modified_value 
 --------------------------+------------------------+-------------------------
  public.sensor_hourly_avg | 2026-01-01 00:00:00+00 | 2026-01-03 00:00:00+00
@@ -104,7 +104,7 @@ ORDER BY bucket, sensor_id;
 
 
 === Pending ranges after refresh ===
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
  cagg_name | lowest_modified_value | greatest_modified_value 
 -----------+-----------------------+-------------------------
 (0 rows)
@@ -114,7 +114,7 @@ SELECT * FROM timescaledb_information.cagg_pending_ranges;
 SELECT delete_command FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg') LIMIT 1
 
 === Pending ranges after delete ===
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
  cagg_name | lowest_modified_value | greatest_modified_value 
 -----------+-----------------------+-------------------------
 (0 rows)
@@ -134,7 +134,7 @@ FROM _timescaledb_catalog.continuous_agg,
 WHERE user_view_name = 'sensor_hourly_avg';
 INSERT 0 2
 Before refresh — two overlapping ranges:
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
         cagg_name         | lowest_modified_value  | greatest_modified_value 
 --------------------------+------------------------+-------------------------
  public.sensor_hourly_avg | 2026-01-01 00:00:00+00 | 2026-01-05 00:00:00+00
@@ -156,7 +156,7 @@ SELECT refresh_command FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg') LI
 CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-01 00:00:00+00'::timestamptz, '2026-01-05 00:00:00+00'::timestamptz);
 psql:queries.sql:98: NOTICE:  continuous aggregate "sensor_hourly_avg" has pending materializations in window [ 2026-01-01 00:00:00+00, 2026-01-05 00:00:00+00 ]
 CALL
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
         cagg_name         | lowest_modified_value  | greatest_modified_value 
 --------------------------+------------------------+-------------------------
  public.sensor_hourly_avg | 2026-01-03 00:00:00+00 | 2026-01-07 00:00:00+00
@@ -195,7 +195,7 @@ FROM _timescaledb_catalog.continuous_agg,
              ('2026-01-03 00:00:00+00', '2026-01-07 00:00:00+00')) AS v(lo, hi)
 WHERE user_view_name = 'sensor_hourly_avg';
 INSERT 0 2
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
         cagg_name         | lowest_modified_value  | greatest_modified_value 
 --------------------------+------------------------+-------------------------
  public.sensor_hourly_avg | 2026-01-01 00:00:00+00 | 2026-01-05 00:00:00+00
@@ -263,7 +263,7 @@ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-01 00:00:
 psql:queries.sql:147: NOTICE:  continuous aggregate "sensor_hourly_avg" has pending materializations in window [ 2026-01-01 00:00:00+00, 2026-01-05 00:00:00+00 ]
 CALL
 Pending ranges after first refresh:
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
         cagg_name         | lowest_modified_value  | greatest_modified_value 
 --------------------------+------------------------+-------------------------
  public.sensor_hourly_avg | 2026-01-03 00:00:00+00 | 2026-01-07 00:00:00+00
@@ -321,7 +321,7 @@ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-03 00:00:
 psql:queries.sql:161: NOTICE:  continuous aggregate "sensor_hourly_avg" has pending materializations in window [ 2026-01-03 00:00:00+00, 2026-01-07 00:00:00+00 ]
 CALL
 Pending ranges after second refresh:
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
  cagg_name | lowest_modified_value | greatest_modified_value 
 -----------+-----------------------+-------------------------
 (0 rows)
@@ -409,7 +409,7 @@ FROM _timescaledb_catalog.continuous_agg
 WHERE user_view_name = 'sensor_hourly_avg';
 INSERT 0 1
 Pending ranges before refresh:
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
         cagg_name         | lowest_modified_value  | greatest_modified_value 
 --------------------------+------------------------+-------------------------
  public.sensor_hourly_avg | 2026-03-01 00:00:00+00 | 2026-03-05 00:00:00+00
@@ -460,7 +460,7 @@ ORDER BY lowest_modified_value;
 (0 rows)
 
 Pending ranges after refresh:
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
         cagg_name         | lowest_modified_value  | greatest_modified_value 
 --------------------------+------------------------+-------------------------
  public.sensor_hourly_avg | 2026-03-01 00:00:00+00 | 2026-03-05 00:00:00+00
@@ -507,7 +507,7 @@ FROM _timescaledb_catalog.continuous_agg
 WHERE user_view_name = 'sensor_hourly_avg';
 INSERT 0 1
 Pending ranges before refresh:
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
         cagg_name         | lowest_modified_value  | greatest_modified_value 
 --------------------------+------------------------+-------------------------
  public.sensor_hourly_avg | 2026-03-01 00:00:00+00 | 2026-03-05 00:00:00+00
@@ -546,7 +546,7 @@ SELECT * FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg');
 CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-03-01 00:00:00+00'::timestamptz, '2026-03-05 00:00:00+00'::timestamptz, force=>true);
 psql:queries.sql:279: ERROR:  materialization range [2026-03-01 00:00:00+00, 2026-03-05 00:00:00+00) overlaps with existing range [2026-03-01 00:00:00+00, 2026-03-05 00:00:00+00) in materialization_ranges table for continuous aggregate "public"."sensor_hourly_avg"
 DETAIL:  A concurrent refresh is working on this range or a previously failed refresh left an overlapping range in the materialization_ranges table.
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
         cagg_name         | lowest_modified_value  | greatest_modified_value 
 --------------------------+------------------------+-------------------------
  public.sensor_hourly_avg | 2026-03-01 00:00:00+00 | 2026-03-05 00:00:00+00

@@ -38,7 +38,7 @@ WHERE bucket >= '2026-01-01 00:00:00+00' AND bucket < '2026-01-03 00:00:00+00'
 ORDER BY bucket, sensor_id;
 
 \echo '\n=== Pending ranges ==='
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
 
 \echo '\n=== Generated refresh + delete commands ==='
 SELECT * FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg');
@@ -56,7 +56,7 @@ ORDER BY bucket, sensor_id;
 
 -- Check that the pending range was consumed
 \echo '\n=== Pending ranges after refresh ==='
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
 
 -- Run the generated delete command
 -- This does nothing for versions <2.26.0 since the materialization_ranges table is cleared after the refresh
@@ -66,7 +66,7 @@ SELECT delete_command FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg') LIM
 
 -- Check that the pending range was consumed
 \echo '\n=== Pending ranges after delete ==='
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
 
 -- ============================================================
 -- Test 2: Overlapping ranges
@@ -87,7 +87,7 @@ FROM _timescaledb_catalog.continuous_agg,
 WHERE user_view_name = 'sensor_hourly_avg';
 
 \echo 'Before refresh — two overlapping ranges:'
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
 
 \echo '\n=== Generated refresh + delete commands ==='
 SELECT * FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg');
@@ -98,7 +98,7 @@ SELECT refresh_command FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg') LI
 \gexec
 
 -- Verify one pending range still exists
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
 
 -- ============================================================
 -- Test 3: Overlapping ranges in the materialization window
@@ -130,7 +130,7 @@ FROM _timescaledb_catalog.continuous_agg,
              ('2026-01-03 00:00:00+00', '2026-01-07 00:00:00+00')) AS v(lo, hi)
 WHERE user_view_name = 'sensor_hourly_avg';
 
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
 
 \echo 'CAgg state before refresh:'
 SELECT bucket, sensor_id, reading_count
@@ -147,7 +147,7 @@ SELECT refresh_command FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg') LI
 \gexec
 
 \echo 'Pending ranges after first refresh:'
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
 
 \echo 'CAgg state after first refresh (Jan 1 - Jan 7):'
 SELECT bucket, sensor_id, reading_count
@@ -161,7 +161,7 @@ SELECT refresh_command FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg') LI
 \gexec
 
 \echo 'Pending ranges after second refresh:'
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
 
 \echo 'CAgg state after second refresh (Jan 1 - Jan 7):'
 SELECT bucket, sensor_id, reading_count
@@ -203,7 +203,7 @@ FROM _timescaledb_catalog.continuous_agg
 WHERE user_view_name = 'sensor_hourly_avg';
 
 \echo 'Pending ranges before refresh:'
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
 
 \echo 'CAgg state before refresh (Mar 1 - Mar 5):'
 SELECT bucket, sensor_id, reading_count
@@ -231,7 +231,7 @@ FROM _timescaledb_catalog.continuous_aggs_hypertable_invalidation_log
 ORDER BY lowest_modified_value;
 
 \echo 'Pending ranges after refresh:'
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
 
 \echo 'CAgg state after first refresh (Mar 1 - Mar 5):'
 SELECT bucket, sensor_id, reading_count
@@ -260,7 +260,7 @@ FROM _timescaledb_catalog.continuous_agg
 WHERE user_view_name = 'sensor_hourly_avg';
 
 \echo 'Pending ranges before refresh:'
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;
 
 \echo 'CAgg state before refresh (Mar 1 - Mar 5):'
 SELECT bucket, sensor_id, reading_count
@@ -279,4 +279,4 @@ SELECT * FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg');
 CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-03-01 00:00:00+00'::timestamptz, '2026-03-05 00:00:00+00'::timestamptz, force=>true);
 
 -- Refresh entries
-SELECT * FROM timescaledb_information.cagg_pending_ranges;
+SELECT * FROM public.cagg_pending_ranges;

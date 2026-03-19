@@ -10,7 +10,7 @@
 -- and returns CALL refresh_continuous_aggregate(...) commands
 -- (without executing them), one per range row.
 
-CREATE OR REPLACE VIEW timescaledb_information.cagg_pending_ranges AS
+CREATE OR REPLACE VIEW public.cagg_pending_ranges AS
     SELECT
         format('%I.%I', ca.user_view_schema, ca.user_view_name) AS cagg_name,
         CASE
