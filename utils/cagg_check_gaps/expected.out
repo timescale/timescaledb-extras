@@ -1,0 +1,554 @@
+SET timezone = 'UTC';
+SET
+Pager usage is off.
+SET client_min_messages TO NOTICE;
+SET
+SELECT * FROM  _timescaledb_catalog.continuous_aggs_hypertable_invalidation_log;
+ hypertable_id | lowest_modified_value | greatest_modified_value 
+---------------+-----------------------+-------------------------
+(0 rows)
+
+INSERT INTO sensor_data
+SELECT
+    timestamp '2026-01-01' + (i * INTERVAL '4 hours') AS time,
+    (i % 5) + 1 AS sensor_id,
+    20.0 AS temperature,
+    50.0 AS humidity,
+    1000.0 AS pressure
+FROM generate_series(0, 11) AS i;
+INSERT 0 12
+SELECT * FROM  hyper_invlog_view;
+ materialization_id |    lowest_modified     |     greatest_modified     
+--------------------+------------------------+---------------------------
+                  2 | -infinity              | 4714-11-24 00:00:00+00 BC
+                  2 | 2026-07-28 09:00:00+00 | infinity
+                  3 | -infinity              | 4714-11-24 00:00:00+00 BC
+                  3 | 2026-07-29 00:00:00+00 | infinity
+(4 rows)
+
+TRUNCATE _timescaledb_catalog.continuous_aggs_hypertable_invalidation_log;
+TRUNCATE TABLE
+INSERT INTO _timescaledb_catalog.continuous_aggs_materialization_ranges
+    (materialization_id, lowest_modified_value, greatest_modified_value)
+SELECT mat_hypertable_id,
+       EXTRACT(EPOCH FROM '2026-01-01 00:00:00+00'::timestamptz)::bigint * 1000000,
+       EXTRACT(EPOCH FROM '2026-01-03 00:00:00+00'::timestamptz)::bigint * 1000000
+FROM _timescaledb_catalog.continuous_agg
+WHERE user_view_name = 'sensor_hourly_avg';
+INSERT 0 1
+
+=== CAgg state before refresh ===
+SELECT bucket, sensor_id, reading_count
+FROM sensor_hourly_avg
+WHERE bucket >= '2026-01-01 00:00:00+00' AND bucket < '2026-01-03 00:00:00+00'
+ORDER BY bucket, sensor_id;
+         bucket         | sensor_id | reading_count 
+------------------------+-----------+---------------
+ 2026-01-01 00:00:00+00 |         1 |             1
+ 2026-01-01 04:00:00+00 |         2 |             1
+ 2026-01-01 08:00:00+00 |         3 |             1
+ 2026-01-01 12:00:00+00 |         4 |             1
+ 2026-01-01 16:00:00+00 |         5 |             1
+ 2026-01-01 20:00:00+00 |         1 |             1
+ 2026-01-02 00:00:00+00 |         2 |             1
+ 2026-01-02 04:00:00+00 |         3 |             1
+ 2026-01-02 08:00:00+00 |         4 |             1
+ 2026-01-02 12:00:00+00 |         5 |             1
+ 2026-01-02 16:00:00+00 |         1 |             1
+ 2026-01-02 20:00:00+00 |         2 |             1
+(12 rows)
+
+
+=== Pending ranges ===
+SELECT * FROM public.cagg_pending_ranges;
+        cagg_name         | lowest_modified_value  | greatest_modified_value 
+--------------------------+------------------------+-------------------------
+ public.sensor_hourly_avg | 2026-01-01 00:00:00+00 | 2026-01-03 00:00:00+00
+(1 row)
+
+
+=== Generated refresh + delete commands ===
+SELECT * FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg');
+                                                               refresh_command                                                                |                                                                                          delete_command                                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-01 00:00:00+00'::timestamptz, '2026-01-03 00:00:00+00'::timestamptz); | DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges WHERE materialization_id = 2 AND lowest_modified_value = 1767225600000000 AND greatest_modified_value = 1767398400000000;
+(1 row)
+
+
+=== Running generated refresh command ===
+SELECT refresh_command FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg') LIMIT 1
+CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-01 00:00:00+00'::timestamptz, '2026-01-03 00:00:00+00'::timestamptz);
+psql:queries.sql:48: NOTICE:  continuous aggregate "sensor_hourly_avg" has pending materializations in window [ 2026-01-01 00:00:00+00, 2026-01-03 00:00:00+00 ]
+CALL
+
+=== CAgg state after refresh ===
+SELECT bucket, sensor_id, reading_count
+FROM sensor_hourly_avg
+WHERE bucket >= '2026-01-01 00:00:00+00' AND bucket < '2026-01-03 00:00:00+00'
+ORDER BY bucket, sensor_id;
+         bucket         | sensor_id | reading_count 
+------------------------+-----------+---------------
+ 2026-01-01 00:00:00+00 |         1 |             2
+ 2026-01-01 04:00:00+00 |         2 |             2
+ 2026-01-01 08:00:00+00 |         3 |             2
+ 2026-01-01 12:00:00+00 |         4 |             2
+ 2026-01-01 16:00:00+00 |         5 |             2
+ 2026-01-01 20:00:00+00 |         1 |             2
+ 2026-01-02 00:00:00+00 |         2 |             2
+ 2026-01-02 04:00:00+00 |         3 |             2
+ 2026-01-02 08:00:00+00 |         4 |             2
+ 2026-01-02 12:00:00+00 |         5 |             2
+ 2026-01-02 16:00:00+00 |         1 |             2
+ 2026-01-02 20:00:00+00 |         2 |             2
+(12 rows)
+
+
+=== Pending ranges after refresh ===
+SELECT * FROM public.cagg_pending_ranges;
+ cagg_name | lowest_modified_value | greatest_modified_value 
+-----------+-----------------------+-------------------------
+(0 rows)
+
+
+=== Running generated delete command ===
+SELECT delete_command FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg') LIMIT 1
+
+=== Pending ranges after delete ===
+SELECT * FROM public.cagg_pending_ranges;
+ cagg_name | lowest_modified_value | greatest_modified_value 
+-----------+-----------------------+-------------------------
+(0 rows)
+
+
+=== Test 2: Overlapping ranges ===
+DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges;
+DELETE 0
+INSERT INTO _timescaledb_catalog.continuous_aggs_materialization_ranges
+    (materialization_id, lowest_modified_value, greatest_modified_value)
+SELECT mat_hypertable_id,
+       EXTRACT(EPOCH FROM lo::timestamptz)::bigint * 1000000,
+       EXTRACT(EPOCH FROM hi::timestamptz)::bigint * 1000000
+FROM _timescaledb_catalog.continuous_agg,
+     (VALUES ('2026-01-01 00:00:00+00', '2026-01-05 00:00:00+00'),
+             ('2026-01-03 00:00:00+00', '2026-01-07 00:00:00+00')) AS v(lo, hi)
+WHERE user_view_name = 'sensor_hourly_avg';
+INSERT 0 2
+Before refresh — two overlapping ranges:
+SELECT * FROM public.cagg_pending_ranges;
+        cagg_name         | lowest_modified_value  | greatest_modified_value 
+--------------------------+------------------------+-------------------------
+ public.sensor_hourly_avg | 2026-01-01 00:00:00+00 | 2026-01-05 00:00:00+00
+ public.sensor_hourly_avg | 2026-01-03 00:00:00+00 | 2026-01-07 00:00:00+00
+(2 rows)
+
+
+=== Generated refresh + delete commands ===
+SELECT * FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg');
+                                                               refresh_command                                                                |                                                                                          delete_command                                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-01 00:00:00+00'::timestamptz, '2026-01-05 00:00:00+00'::timestamptz); | DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges WHERE materialization_id = 2 AND lowest_modified_value = 1767225600000000 AND greatest_modified_value = 1767571200000000;
+ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-03 00:00:00+00'::timestamptz, '2026-01-07 00:00:00+00'::timestamptz); | DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges WHERE materialization_id = 2 AND lowest_modified_value = 1767398400000000 AND greatest_modified_value = 1767744000000000;
+(2 rows)
+
+
+=== Running first generated refresh command ===
+SELECT refresh_command FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg') LIMIT 1
+CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-01 00:00:00+00'::timestamptz, '2026-01-05 00:00:00+00'::timestamptz);
+psql:queries.sql:98: NOTICE:  continuous aggregate "sensor_hourly_avg" has pending materializations in window [ 2026-01-01 00:00:00+00, 2026-01-05 00:00:00+00 ]
+CALL
+SELECT * FROM public.cagg_pending_ranges;
+        cagg_name         | lowest_modified_value  | greatest_modified_value 
+--------------------------+------------------------+-------------------------
+ public.sensor_hourly_avg | 2026-01-03 00:00:00+00 | 2026-01-07 00:00:00+00
+(1 row)
+
+
+=== Test 3: Overlapping ranges in the materialization window ===
+DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges;
+DELETE 1
+INSERT INTO sensor_data
+SELECT ts, ((ROW_NUMBER() OVER (ORDER BY ts) - 1) % 5 + 1)::int, 20.0, 50.0, 1000.0
+FROM (
+    SELECT generate_series('2026-01-04 08:00:00+00'::timestamptz, '2026-01-05 00:00:00+00'::timestamptz, INTERVAL '4 hours') AS ts
+    UNION ALL
+    SELECT generate_series('2026-01-06 00:00:00+00'::timestamptz, '2026-01-06 16:00:00+00'::timestamptz, INTERVAL '4 hours')
+) sub;
+INSERT 0 10
+SELECT * FROM  hyper_invlog_view;
+ materialization_id |    lowest_modified     |     greatest_modified     
+--------------------+------------------------+---------------------------
+                  2 | -infinity              | 4714-11-24 00:00:00+00 BC
+                  2 | 2026-07-28 09:00:00+00 | infinity
+                  3 | -infinity              | 4714-11-24 00:00:00+00 BC
+                  3 | 2026-07-29 00:00:00+00 | infinity
+(4 rows)
+
+TRUNCATE _timescaledb_catalog.continuous_aggs_hypertable_invalidation_log;
+TRUNCATE TABLE
+INSERT INTO _timescaledb_catalog.continuous_aggs_materialization_ranges
+    (materialization_id, lowest_modified_value, greatest_modified_value)
+SELECT mat_hypertable_id,
+       EXTRACT(EPOCH FROM lo::timestamptz)::bigint * 1000000,
+       EXTRACT(EPOCH FROM hi::timestamptz)::bigint * 1000000
+FROM _timescaledb_catalog.continuous_agg,
+     (VALUES ('2026-01-01 00:00:00+00', '2026-01-05 00:00:00+00'),
+             ('2026-01-03 00:00:00+00', '2026-01-07 00:00:00+00')) AS v(lo, hi)
+WHERE user_view_name = 'sensor_hourly_avg';
+INSERT 0 2
+SELECT * FROM public.cagg_pending_ranges;
+        cagg_name         | lowest_modified_value  | greatest_modified_value 
+--------------------------+------------------------+-------------------------
+ public.sensor_hourly_avg | 2026-01-01 00:00:00+00 | 2026-01-05 00:00:00+00
+ public.sensor_hourly_avg | 2026-01-03 00:00:00+00 | 2026-01-07 00:00:00+00
+(2 rows)
+
+CAgg state before refresh:
+SELECT bucket, sensor_id, reading_count
+FROM sensor_hourly_avg
+WHERE bucket >= '2026-01-01 00:00:00+00' AND bucket < '2026-01-07 00:00:00+00'
+ORDER BY bucket, sensor_id;
+         bucket         | sensor_id | reading_count 
+------------------------+-----------+---------------
+ 2026-01-01 00:00:00+00 |         1 |             2
+ 2026-01-01 04:00:00+00 |         2 |             2
+ 2026-01-01 08:00:00+00 |         3 |             2
+ 2026-01-01 12:00:00+00 |         4 |             2
+ 2026-01-01 16:00:00+00 |         5 |             2
+ 2026-01-01 20:00:00+00 |         1 |             2
+ 2026-01-02 00:00:00+00 |         2 |             2
+ 2026-01-02 04:00:00+00 |         3 |             2
+ 2026-01-02 08:00:00+00 |         4 |             2
+ 2026-01-02 12:00:00+00 |         5 |             2
+ 2026-01-02 16:00:00+00 |         1 |             2
+ 2026-01-02 20:00:00+00 |         2 |             2
+ 2026-01-03 00:00:00+00 |         3 |             1
+ 2026-01-03 04:00:00+00 |         4 |             1
+ 2026-01-03 08:00:00+00 |         5 |             1
+ 2026-01-03 12:00:00+00 |         1 |             1
+ 2026-01-03 16:00:00+00 |         2 |             1
+ 2026-01-03 20:00:00+00 |         3 |             1
+ 2026-01-04 00:00:00+00 |         4 |             1
+ 2026-01-04 04:00:00+00 |         5 |             1
+ 2026-01-04 08:00:00+00 |         1 |             1
+ 2026-01-04 12:00:00+00 |         2 |             1
+ 2026-01-04 16:00:00+00 |         3 |             1
+ 2026-01-04 20:00:00+00 |         4 |             1
+ 2026-01-05 00:00:00+00 |         5 |             1
+ 2026-01-05 04:00:00+00 |         1 |             1
+ 2026-01-05 08:00:00+00 |         2 |             1
+ 2026-01-05 12:00:00+00 |         3 |             1
+ 2026-01-05 16:00:00+00 |         4 |             1
+ 2026-01-05 20:00:00+00 |         5 |             1
+ 2026-01-06 00:00:00+00 |         1 |             1
+ 2026-01-06 04:00:00+00 |         2 |             1
+ 2026-01-06 08:00:00+00 |         3 |             1
+ 2026-01-06 12:00:00+00 |         4 |             1
+ 2026-01-06 16:00:00+00 |         5 |             1
+ 2026-01-06 20:00:00+00 |         1 |             1
+(36 rows)
+
+
+=== Generated refresh + delete commands ===
+SELECT * FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg');
+                                                               refresh_command                                                                |                                                                                          delete_command                                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-01 00:00:00+00'::timestamptz, '2026-01-05 00:00:00+00'::timestamptz); | DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges WHERE materialization_id = 2 AND lowest_modified_value = 1767225600000000 AND greatest_modified_value = 1767571200000000;
+ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-03 00:00:00+00'::timestamptz, '2026-01-07 00:00:00+00'::timestamptz); | DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges WHERE materialization_id = 2 AND lowest_modified_value = 1767398400000000 AND greatest_modified_value = 1767744000000000;
+(2 rows)
+
+
+=== Running first generated refresh command ===
+SELECT refresh_command FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg') LIMIT 1
+CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-01 00:00:00+00'::timestamptz, '2026-01-05 00:00:00+00'::timestamptz);
+psql:queries.sql:147: NOTICE:  continuous aggregate "sensor_hourly_avg" has pending materializations in window [ 2026-01-01 00:00:00+00, 2026-01-05 00:00:00+00 ]
+CALL
+Pending ranges after first refresh:
+SELECT * FROM public.cagg_pending_ranges;
+        cagg_name         | lowest_modified_value  | greatest_modified_value 
+--------------------------+------------------------+-------------------------
+ public.sensor_hourly_avg | 2026-01-03 00:00:00+00 | 2026-01-07 00:00:00+00
+(1 row)
+
+CAgg state after first refresh (Jan 1 - Jan 7):
+SELECT bucket, sensor_id, reading_count
+FROM sensor_hourly_avg
+WHERE bucket >= '2026-01-01 00:00:00+00' AND bucket < '2026-01-07 00:00:00+00'
+ORDER BY bucket, sensor_id;
+         bucket         | sensor_id | reading_count 
+------------------------+-----------+---------------
+ 2026-01-01 00:00:00+00 |         1 |             2
+ 2026-01-01 04:00:00+00 |         2 |             2
+ 2026-01-01 08:00:00+00 |         3 |             2
+ 2026-01-01 12:00:00+00 |         4 |             2
+ 2026-01-01 16:00:00+00 |         5 |             2
+ 2026-01-01 20:00:00+00 |         1 |             2
+ 2026-01-02 00:00:00+00 |         2 |             2
+ 2026-01-02 04:00:00+00 |         3 |             2
+ 2026-01-02 08:00:00+00 |         4 |             2
+ 2026-01-02 12:00:00+00 |         5 |             2
+ 2026-01-02 16:00:00+00 |         1 |             2
+ 2026-01-02 20:00:00+00 |         2 |             2
+ 2026-01-03 00:00:00+00 |         3 |             1
+ 2026-01-03 04:00:00+00 |         4 |             1
+ 2026-01-03 08:00:00+00 |         5 |             1
+ 2026-01-03 12:00:00+00 |         1 |             1
+ 2026-01-03 16:00:00+00 |         2 |             1
+ 2026-01-03 20:00:00+00 |         3 |             1
+ 2026-01-04 00:00:00+00 |         4 |             1
+ 2026-01-04 04:00:00+00 |         5 |             1
+ 2026-01-04 08:00:00+00 |         1 |             2
+ 2026-01-04 12:00:00+00 |         2 |             2
+ 2026-01-04 16:00:00+00 |         3 |             2
+ 2026-01-04 20:00:00+00 |         4 |             2
+ 2026-01-05 00:00:00+00 |         5 |             1
+ 2026-01-05 04:00:00+00 |         1 |             1
+ 2026-01-05 08:00:00+00 |         2 |             1
+ 2026-01-05 12:00:00+00 |         3 |             1
+ 2026-01-05 16:00:00+00 |         4 |             1
+ 2026-01-05 20:00:00+00 |         5 |             1
+ 2026-01-06 00:00:00+00 |         1 |             1
+ 2026-01-06 04:00:00+00 |         2 |             1
+ 2026-01-06 08:00:00+00 |         3 |             1
+ 2026-01-06 12:00:00+00 |         4 |             1
+ 2026-01-06 16:00:00+00 |         5 |             1
+ 2026-01-06 20:00:00+00 |         1 |             1
+(36 rows)
+
+
+=== Running second generated refresh command ===
+SELECT refresh_command FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg') LIMIT 1
+CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-03 00:00:00+00'::timestamptz, '2026-01-07 00:00:00+00'::timestamptz);
+psql:queries.sql:161: NOTICE:  continuous aggregate "sensor_hourly_avg" has pending materializations in window [ 2026-01-03 00:00:00+00, 2026-01-07 00:00:00+00 ]
+CALL
+Pending ranges after second refresh:
+SELECT * FROM public.cagg_pending_ranges;
+ cagg_name | lowest_modified_value | greatest_modified_value 
+-----------+-----------------------+-------------------------
+(0 rows)
+
+CAgg state after second refresh (Jan 1 - Jan 7):
+SELECT bucket, sensor_id, reading_count
+FROM sensor_hourly_avg
+WHERE bucket >= '2026-01-01 00:00:00+00' AND bucket < '2026-01-07 00:00:00+00'
+ORDER BY bucket, sensor_id;
+         bucket         | sensor_id | reading_count 
+------------------------+-----------+---------------
+ 2026-01-01 00:00:00+00 |         1 |             2
+ 2026-01-01 04:00:00+00 |         2 |             2
+ 2026-01-01 08:00:00+00 |         3 |             2
+ 2026-01-01 12:00:00+00 |         4 |             2
+ 2026-01-01 16:00:00+00 |         5 |             2
+ 2026-01-01 20:00:00+00 |         1 |             2
+ 2026-01-02 00:00:00+00 |         2 |             2
+ 2026-01-02 04:00:00+00 |         3 |             2
+ 2026-01-02 08:00:00+00 |         4 |             2
+ 2026-01-02 12:00:00+00 |         5 |             2
+ 2026-01-02 16:00:00+00 |         1 |             2
+ 2026-01-02 20:00:00+00 |         2 |             2
+ 2026-01-03 00:00:00+00 |         3 |             1
+ 2026-01-03 04:00:00+00 |         4 |             1
+ 2026-01-03 08:00:00+00 |         5 |             1
+ 2026-01-03 12:00:00+00 |         1 |             1
+ 2026-01-03 16:00:00+00 |         2 |             1
+ 2026-01-03 20:00:00+00 |         3 |             1
+ 2026-01-04 00:00:00+00 |         4 |             1
+ 2026-01-04 04:00:00+00 |         5 |             1
+ 2026-01-04 08:00:00+00 |         1 |             2
+ 2026-01-04 12:00:00+00 |         2 |             2
+ 2026-01-04 16:00:00+00 |         3 |             2
+ 2026-01-04 20:00:00+00 |         4 |             2
+ 2026-01-05 00:00:00+00 |         5 |             2
+ 2026-01-05 04:00:00+00 |         1 |             1
+ 2026-01-05 08:00:00+00 |         2 |             1
+ 2026-01-05 12:00:00+00 |         3 |             1
+ 2026-01-05 16:00:00+00 |         4 |             1
+ 2026-01-05 20:00:00+00 |         5 |             1
+ 2026-01-06 00:00:00+00 |         1 |             2
+ 2026-01-06 04:00:00+00 |         2 |             2
+ 2026-01-06 08:00:00+00 |         3 |             2
+ 2026-01-06 12:00:00+00 |         4 |             2
+ 2026-01-06 16:00:00+00 |         5 |             2
+ 2026-01-06 20:00:00+00 |         1 |             1
+(36 rows)
+
+
+=== Test 4: Pending range with invalidation logs present ===
+DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges;
+DELETE 0
+INSERT INTO sensor_data
+SELECT
+    timestamp '2026-03-01' + (i * INTERVAL '4 hours') AS time,
+    (i % 5) + 1 AS sensor_id,
+    20.0 AS temperature,
+    50.0 AS humidity,
+    1000.0 AS pressure
+FROM generate_series(0, 35) AS i;
+INSERT 0 36
+Invalidation log entries after insert:
+SELECT hypertable_id,
+       _timescaledb_functions.to_timestamp(lowest_modified_value) AS lowest_modified_value,
+       _timescaledb_functions.to_timestamp(greatest_modified_value) AS greatest_modified_value
+FROM _timescaledb_catalog.continuous_aggs_hypertable_invalidation_log
+ORDER BY lowest_modified_value;
+ hypertable_id | lowest_modified_value  | greatest_modified_value 
+---------------+------------------------+-------------------------
+             1 | 2026-03-01 00:00:00+00 | 2026-03-01 20:00:00+00
+             1 | 2026-03-02 00:00:00+00 | 2026-03-02 20:00:00+00
+             1 | 2026-03-03 00:00:00+00 | 2026-03-03 20:00:00+00
+             1 | 2026-03-04 00:00:00+00 | 2026-03-04 20:00:00+00
+             1 | 2026-03-05 00:00:00+00 | 2026-03-05 20:00:00+00
+             1 | 2026-03-06 00:00:00+00 | 2026-03-06 20:00:00+00
+(6 rows)
+
+INSERT INTO _timescaledb_catalog.continuous_aggs_materialization_ranges
+    (materialization_id, lowest_modified_value, greatest_modified_value)
+SELECT mat_hypertable_id,
+       EXTRACT(EPOCH FROM '2026-03-01 00:00:00+00'::timestamptz)::bigint * 1000000,
+       EXTRACT(EPOCH FROM '2026-03-05 00:00:00+00'::timestamptz)::bigint * 1000000
+FROM _timescaledb_catalog.continuous_agg
+WHERE user_view_name = 'sensor_hourly_avg';
+INSERT 0 1
+Pending ranges before refresh:
+SELECT * FROM public.cagg_pending_ranges;
+        cagg_name         | lowest_modified_value  | greatest_modified_value 
+--------------------------+------------------------+-------------------------
+ public.sensor_hourly_avg | 2026-03-01 00:00:00+00 | 2026-03-05 00:00:00+00
+(1 row)
+
+CAgg state before refresh (Mar 1 - Mar 5):
+SELECT bucket, sensor_id, reading_count
+FROM sensor_hourly_avg
+WHERE bucket >= '2026-03-01 00:00:00+00' AND bucket < '2026-03-05 00:00:00+00'
+ORDER BY bucket, sensor_id
+LIMIT 10;
+         bucket         | sensor_id | reading_count 
+------------------------+-----------+---------------
+ 2026-03-01 00:00:00+00 |         5 |             1
+ 2026-03-01 04:00:00+00 |         1 |             1
+ 2026-03-01 08:00:00+00 |         2 |             1
+ 2026-03-01 12:00:00+00 |         3 |             1
+ 2026-03-01 16:00:00+00 |         4 |             1
+ 2026-03-01 20:00:00+00 |         5 |             1
+ 2026-03-02 00:00:00+00 |         1 |             1
+ 2026-03-02 04:00:00+00 |         2 |             1
+ 2026-03-02 08:00:00+00 |         3 |             1
+ 2026-03-02 12:00:00+00 |         4 |             1
+(10 rows)
+
+
+=== Generated refresh + delete commands ===
+SELECT * FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg');
+                                                               refresh_command                                                                |                                                                                          delete_command                                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-03-01 00:00:00+00'::timestamptz, '2026-03-05 00:00:00+00'::timestamptz); | DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges WHERE materialization_id = 2 AND lowest_modified_value = 1772323200000000 AND greatest_modified_value = 1772668800000000;
+(1 row)
+
+
+=== Running generated refresh command ===
+SELECT refresh_command FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg') LIMIT 1
+CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-03-01 00:00:00+00'::timestamptz, '2026-03-05 00:00:00+00'::timestamptz);
+psql:queries.sql:223: ERROR:  materialization range [2026-03-01 00:00:00+00, 2026-03-01 21:00:00+00) overlaps with existing range [2026-03-01 00:00:00+00, 2026-03-05 00:00:00+00) in materialization_ranges table for continuous aggregate "public"."sensor_hourly_avg"
+DETAIL:  A concurrent refresh is working on this range or a previously failed refresh left an overlapping range in the materialization_ranges table.
+Invalidation log after refresh attempt:
+SELECT hypertable_id,
+       _timescaledb_functions.to_timestamp(lowest_modified_value) AS lowest_modified_value,
+       _timescaledb_functions.to_timestamp(greatest_modified_value) AS greatest_modified_value
+FROM _timescaledb_catalog.continuous_aggs_hypertable_invalidation_log
+ORDER BY lowest_modified_value;
+ hypertable_id | lowest_modified_value | greatest_modified_value 
+---------------+-----------------------+-------------------------
+(0 rows)
+
+Pending ranges after refresh:
+SELECT * FROM public.cagg_pending_ranges;
+        cagg_name         | lowest_modified_value  | greatest_modified_value 
+--------------------------+------------------------+-------------------------
+ public.sensor_hourly_avg | 2026-03-01 00:00:00+00 | 2026-03-05 00:00:00+00
+(1 row)
+
+CAgg state after first refresh (Mar 1 - Mar 5):
+SELECT bucket, sensor_id, reading_count
+FROM sensor_hourly_avg
+WHERE bucket >= '2026-03-01 00:00:00+00' AND bucket < '2026-03-05 00:00:00+00'
+ORDER BY bucket, sensor_id
+LIMIT 10;
+         bucket         | sensor_id | reading_count 
+------------------------+-----------+---------------
+ 2026-03-01 00:00:00+00 |         5 |             1
+ 2026-03-01 04:00:00+00 |         1 |             1
+ 2026-03-01 08:00:00+00 |         2 |             1
+ 2026-03-01 12:00:00+00 |         3 |             1
+ 2026-03-01 16:00:00+00 |         4 |             1
+ 2026-03-01 20:00:00+00 |         5 |             1
+ 2026-03-02 00:00:00+00 |         1 |             1
+ 2026-03-02 04:00:00+00 |         2 |             1
+ 2026-03-02 08:00:00+00 |         3 |             1
+ 2026-03-02 12:00:00+00 |         4 |             1
+(10 rows)
+
+
+=== Generated refresh + delete commands after failed refresh ===
+SELECT * FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg');
+                                                               refresh_command                                                                |                                                                                          delete_command                                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-03-01 00:00:00+00'::timestamptz, '2026-03-05 00:00:00+00'::timestamptz); | DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges WHERE materialization_id = 2 AND lowest_modified_value = 1772323200000000 AND greatest_modified_value = 1772668800000000;
+(1 row)
+
+
+=== Test 5: Test force refresh ===
+DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges;
+DELETE 1
+INSERT INTO _timescaledb_catalog.continuous_aggs_materialization_ranges
+    (materialization_id, lowest_modified_value, greatest_modified_value)
+SELECT mat_hypertable_id,
+       EXTRACT(EPOCH FROM '2026-03-01 00:00:00+00'::timestamptz)::bigint * 1000000,
+       EXTRACT(EPOCH FROM '2026-03-05 00:00:00+00'::timestamptz)::bigint * 1000000
+FROM _timescaledb_catalog.continuous_agg
+WHERE user_view_name = 'sensor_hourly_avg';
+INSERT 0 1
+Pending ranges before refresh:
+SELECT * FROM public.cagg_pending_ranges;
+        cagg_name         | lowest_modified_value  | greatest_modified_value 
+--------------------------+------------------------+-------------------------
+ public.sensor_hourly_avg | 2026-03-01 00:00:00+00 | 2026-03-05 00:00:00+00
+(1 row)
+
+CAgg state before refresh (Mar 1 - Mar 5):
+SELECT bucket, sensor_id, reading_count
+FROM sensor_hourly_avg
+WHERE bucket >= '2026-03-01 00:00:00+00' AND bucket < '2026-03-05 00:00:00+00'
+ORDER BY bucket, sensor_id
+LIMIT 10;
+         bucket         | sensor_id | reading_count 
+------------------------+-----------+---------------
+ 2026-03-01 00:00:00+00 |         5 |             1
+ 2026-03-01 04:00:00+00 |         1 |             1
+ 2026-03-01 08:00:00+00 |         2 |             1
+ 2026-03-01 12:00:00+00 |         3 |             1
+ 2026-03-01 16:00:00+00 |         4 |             1
+ 2026-03-01 20:00:00+00 |         5 |             1
+ 2026-03-02 00:00:00+00 |         1 |             1
+ 2026-03-02 04:00:00+00 |         2 |             1
+ 2026-03-02 08:00:00+00 |         3 |             1
+ 2026-03-02 12:00:00+00 |         4 |             1
+(10 rows)
+
+
+=== Generated refresh + delete commands ===
+SELECT * FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg');
+                                                               refresh_command                                                                |                                                                                          delete_command                                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-03-01 00:00:00+00'::timestamptz, '2026-03-05 00:00:00+00'::timestamptz); | DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges WHERE materialization_id = 2 AND lowest_modified_value = 1772323200000000 AND greatest_modified_value = 1772668800000000;
+(1 row)
+
+
+=== Running force refresh command for expected generated statement ===
+CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-03-01 00:00:00+00'::timestamptz, '2026-03-05 00:00:00+00'::timestamptz, force=>true);
+psql:queries.sql:279: ERROR:  materialization range [2026-03-01 00:00:00+00, 2026-03-05 00:00:00+00) overlaps with existing range [2026-03-01 00:00:00+00, 2026-03-05 00:00:00+00) in materialization_ranges table for continuous aggregate "public"."sensor_hourly_avg"
+DETAIL:  A concurrent refresh is working on this range or a previously failed refresh left an overlapping range in the materialization_ranges table.
+SELECT * FROM public.cagg_pending_ranges;
+        cagg_name         | lowest_modified_value  | greatest_modified_value 
+--------------------------+------------------------+-------------------------
+ public.sensor_hourly_avg | 2026-03-01 00:00:00+00 | 2026-03-05 00:00:00+00
+(1 row)
+
