@@ -11,6 +11,7 @@ psql -X -d postgres -c "CREATE DATABASE $DB;" > /dev/null 2>&1
 
 # Run setup and queries, capture output
 psql -X -d "$DB" -f setup.sql > /dev/null 2>&1
+psql -X -d "$DB" -f tsdbadmin_setup.sql > /dev/null 2>&1
 psql -X -d "$DB" -e -f queries.sql &> temp.out 
 
 # Clean up database
