@@ -94,7 +94,7 @@ AS $$
         END
     ),
     format(
-        'DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges WHERE materialization_id = %s AND lowest_modified_value = %s AND greatest_modified_value = %s;',
+        'SELECT _timescaledb_functions.remove_materialization_ranges(%s, %s, %s);',
         r.mat_hypertable_id,
         r.lowest_modified_value,
         r.greatest_modified_value

@@ -69,9 +69,9 @@ SELECT * FROM public.cagg_pending_ranges;
 
 === Generated refresh + delete commands ===
 SELECT * FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg');
-                                                               refresh_command                                                                |                                                                                          delete_command                                                                                           
-----------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-01 00:00:00+00'::timestamptz, '2026-01-03 00:00:00+00'::timestamptz); | DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges WHERE materialization_id = 2 AND lowest_modified_value = 1767225600000000 AND greatest_modified_value = 1767398400000000;
+                                                               refresh_command                                                                |                                           delete_command                                            
+----------------------------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------
+ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-01 00:00:00+00'::timestamptz, '2026-01-03 00:00:00+00'::timestamptz); | SELECT _timescaledb_functions.remove_materialization_ranges(2, 1767225600000000, 1767398400000000);
 (1 row)
 
 
@@ -144,10 +144,10 @@ SELECT * FROM public.cagg_pending_ranges;
 
 === Generated refresh + delete commands ===
 SELECT * FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg');
-                                                               refresh_command                                                                |                                                                                          delete_command                                                                                           
-----------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-01 00:00:00+00'::timestamptz, '2026-01-05 00:00:00+00'::timestamptz); | DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges WHERE materialization_id = 2 AND lowest_modified_value = 1767225600000000 AND greatest_modified_value = 1767571200000000;
- CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-03 00:00:00+00'::timestamptz, '2026-01-07 00:00:00+00'::timestamptz); | DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges WHERE materialization_id = 2 AND lowest_modified_value = 1767398400000000 AND greatest_modified_value = 1767744000000000;
+                                                               refresh_command                                                                |                                           delete_command                                            
+----------------------------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------
+ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-01 00:00:00+00'::timestamptz, '2026-01-05 00:00:00+00'::timestamptz); | SELECT _timescaledb_functions.remove_materialization_ranges(2, 1767225600000000, 1767571200000000);
+ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-03 00:00:00+00'::timestamptz, '2026-01-07 00:00:00+00'::timestamptz); | SELECT _timescaledb_functions.remove_materialization_ranges(2, 1767398400000000, 1767744000000000);
 (2 rows)
 
 
@@ -250,10 +250,10 @@ ORDER BY bucket, sensor_id;
 
 === Generated refresh + delete commands ===
 SELECT * FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg');
-                                                               refresh_command                                                                |                                                                                          delete_command                                                                                           
-----------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-01 00:00:00+00'::timestamptz, '2026-01-05 00:00:00+00'::timestamptz); | DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges WHERE materialization_id = 2 AND lowest_modified_value = 1767225600000000 AND greatest_modified_value = 1767571200000000;
- CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-03 00:00:00+00'::timestamptz, '2026-01-07 00:00:00+00'::timestamptz); | DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges WHERE materialization_id = 2 AND lowest_modified_value = 1767398400000000 AND greatest_modified_value = 1767744000000000;
+                                                               refresh_command                                                                |                                           delete_command                                            
+----------------------------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------
+ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-01 00:00:00+00'::timestamptz, '2026-01-05 00:00:00+00'::timestamptz); | SELECT _timescaledb_functions.remove_materialization_ranges(2, 1767225600000000, 1767571200000000);
+ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-01-03 00:00:00+00'::timestamptz, '2026-01-07 00:00:00+00'::timestamptz); | SELECT _timescaledb_functions.remove_materialization_ranges(2, 1767398400000000, 1767744000000000);
 (2 rows)
 
 
@@ -438,9 +438,9 @@ LIMIT 10;
 
 === Generated refresh + delete commands ===
 SELECT * FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg');
-                                                               refresh_command                                                                |                                                                                          delete_command                                                                                           
-----------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-03-01 00:00:00+00'::timestamptz, '2026-03-05 00:00:00+00'::timestamptz); | DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges WHERE materialization_id = 2 AND lowest_modified_value = 1772323200000000 AND greatest_modified_value = 1772668800000000;
+                                                               refresh_command                                                                |                                           delete_command                                            
+----------------------------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------
+ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-03-01 00:00:00+00'::timestamptz, '2026-03-05 00:00:00+00'::timestamptz); | SELECT _timescaledb_functions.remove_materialization_ranges(2, 1772323200000000, 1772668800000000);
 (1 row)
 
 
@@ -489,9 +489,9 @@ LIMIT 10;
 
 === Generated refresh + delete commands after failed refresh ===
 SELECT * FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg');
-                                                               refresh_command                                                                |                                                                                          delete_command                                                                                           
-----------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-03-01 00:00:00+00'::timestamptz, '2026-03-05 00:00:00+00'::timestamptz); | DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges WHERE materialization_id = 2 AND lowest_modified_value = 1772323200000000 AND greatest_modified_value = 1772668800000000;
+                                                               refresh_command                                                                |                                           delete_command                                            
+----------------------------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------
+ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-03-01 00:00:00+00'::timestamptz, '2026-03-05 00:00:00+00'::timestamptz); | SELECT _timescaledb_functions.remove_materialization_ranges(2, 1772323200000000, 1772668800000000);
 (1 row)
 
 
@@ -536,9 +536,9 @@ LIMIT 10;
 
 === Generated refresh + delete commands ===
 SELECT * FROM cagg_get_manual_refresh_stmt('sensor_hourly_avg');
-                                                               refresh_command                                                                |                                                                                          delete_command                                                                                           
-----------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-03-01 00:00:00+00'::timestamptz, '2026-03-05 00:00:00+00'::timestamptz); | DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges WHERE materialization_id = 2 AND lowest_modified_value = 1772323200000000 AND greatest_modified_value = 1772668800000000;
+                                                               refresh_command                                                                |                                           delete_command                                            
+----------------------------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------
+ CALL refresh_continuous_aggregate('public.sensor_hourly_avg', '2026-03-01 00:00:00+00'::timestamptz, '2026-03-05 00:00:00+00'::timestamptz); | SELECT _timescaledb_functions.remove_materialization_ranges(2, 1772323200000000, 1772668800000000);
 (1 row)
 
 
