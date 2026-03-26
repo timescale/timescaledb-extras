@@ -13,7 +13,8 @@ SELECT *
 FROM public.cagg_pending_ranges;
 ```
 
-Please note that these ranges may represent either **actively being processed work** or stale entries left behind by a previously failed refresh. For that reason, the script is intentionally conservative and only generates statements for manual review. On the same line, this view will help us monitor jobs, as requested.
+Please note that these ranges may represent either **actively being processed work** or stale entries left behind by a previously failed refresh. For that reason, the script is intentionally conservative and only generates statements for manual review. 
+
 To generate the refresh statements for a specific continuous aggregate appearing on the public.cagg_pending_ranges view, run:
 ```
 CREATE TEMPORARY TABLE cagg_get_manual_refresh_tmp AS
@@ -21,21 +22,15 @@ SELECT *
 FROM public.cagg_get_manual_refresh_stmt('public.sensor_hourly');
 ```
 
-The output will include ready-to-run refresh command statements and a corresponding DELETE query for each range you see on the public.cagg_pending_ranges view.
-The intended workflow to address gaps is to first save the view output into a temporary table, review the generated commands, then execute the DELETE statement, and finally run the corresponding refresh_continuous_aggregate() call. Saving the view output to a temporary table early provides a safeguard against an edge case involving concurrent refresh failures. This approach ensures the ranges remain available for reprocessing even if the refresh step encounters that error. 
-
-Again, the ranges that appear when querying the public.cagg_pending_ranges view **may represent either actively being processed work or stale entries left behind by a previously failed refresh**. For that reason, the script is intentionally conservative and only generates statements for manual review. Here, if you have any questions, please let us know.
-
-For example:
 ```
-CALL refresh_continuous_aggregate(
-    'public.sensor_hourly',
-    '2025-01-01 00:00:00+00'::timestamptz,
-    '2025-01-02 00:00:00+00'::timestamptz
-);
+tsdb=> select * from public.cagg_get_manual_refresh_stmt('public.telemetry_rec_monitor_node');
+refresh_command | CALL refresh_continuous_aggregate('public.telemetry_rec_monitor_node', '2026-03-24 16:45:50+00'::timestamptz, '2026-03-24 16:46:40+00'::timestamptz);
+delete_command  | SELECT _timescaledb_functions.remove_materialization_ranges(943, 1774370750000000, 1774370800000000);
+
 ```
 
-If you encounter an overlap error while running one of the generated refresh commands, such as a message indicating that the requested materialization range overlaps with an existing range, that generally means one of two things: 
-A refresh is actively working on that interval.
-A previous failed operation left behind a stale range entry.
-In that case, the recommended approach is first to verify whether a manual refresh or a policy job is currently processing that range. 
+The output has ready-to-run delete and refresh commands.
+The intended workflow to address gaps is to first save the view output into a temporary table, review the generated commands, then execute the delete_command , followed by the refresh_command
+Saving the view output to a temporary table early provides a safeguard against an edge case involving concurrent refresh failures. This approach ensures the ranges remain available for reprocessing even if the refresh step encounters that error. 
+
+Again, the ranges that appear when querying the public.cagg_pending_ranges view **may represent either actively being processed work or stale entries left behind by a previously failed refresh**. For that reason, the script is intentionally conservative and only generates statements for manual review. 
