@@ -151,11 +151,13 @@ BEGIN
   END IF;
 
   -- orphaned foreign key references in _timescaledb_catalog.chunk_constraint
-  SELECT array_agg(constraint_name) INTO v_relnames FROM _timescaledb_catalog.chunk_constraint cc
-  WHERE
-    NOT EXISTS(SELECT FROM _timescaledb_catalog.chunk ch WHERE ch.id = cc.chunk_id);
-  IF v_relnames IS NOT NULL THEN
-    RAISE WARNING 'Found chunk_constraint entry with missing chunk catalog entry: %', v_relnames;
+  IF EXISTS(SELECT FROM pg_class c JOIN pg_namespace nsp ON c.relnamespace=nsp.oid AND nspname = '_timescaledb_catalog' WHERE relname='chunk_constraint') THEN
+    SELECT array_agg(constraint_name) INTO v_relnames FROM _timescaledb_catalog.chunk_constraint cc
+    WHERE
+      NOT EXISTS(SELECT FROM _timescaledb_catalog.chunk ch WHERE ch.id = cc.chunk_id);
+    IF v_relnames IS NOT NULL THEN
+      RAISE WARNING 'Found chunk_constraint entry with missing chunk catalog entry: %', v_relnames;
+    END IF;
   END IF;
 
   -- orphaned foreign key references in _timescaledb_catalog.chunk_constraint
