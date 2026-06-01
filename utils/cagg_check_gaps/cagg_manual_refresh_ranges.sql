@@ -41,16 +41,6 @@ CREATE OR REPLACE VIEW public.cagg_pending_ranges AS
         AND d.interval_length IS NOT NULL
     ORDER BY ca.user_view_schema, ca.user_view_name, mr.lowest_modified_value;
 
-CREATE OR REPLACE FUNCTION _timescaledb_functions.remove_materialization_ranges(mat_hypertable_id integer, start_value bigint, end_value bigint)
- RETURNS void
- LANGUAGE sql
- SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'pg_temp'
-AS $$
-	DELETE FROM _timescaledb_catalog.continuous_aggs_materialization_ranges
-	WHERE materialization_id = mat_hypertable_id and lowest_modified_value = start_value and greatest_modified_value = end_value;
-$$
-  
 DROP FUNCTION IF EXISTS cagg_get_manual_refresh_stmt(text);
 CREATE OR REPLACE FUNCTION cagg_get_manual_refresh_stmt(cagg_name text)
 RETURNS TABLE(refresh_command text, delete_command text)
