@@ -151,7 +151,7 @@ BEGIN
   END IF;
 
   -- orphaned foreign key references in _timescaledb_catalog.chunk_constraint
-  IF EXISTS(SELECT FROM pg_class c JOIN pg_namespace nsp ON c.relnamespace=nsp.oid AND nspname = '_timescaledb_catalog' WHERE relname='chunk_constraint') THEN
+  IF EXISTS(SELECT FROM pg_class WHERE relname='chunk_constraint' AND relkind = 'r' AND relnamespace = '_timescaledb_catalog'::regnamespace) THEN
     SELECT array_agg(constraint_name) INTO v_relnames FROM _timescaledb_catalog.chunk_constraint cc
     WHERE
       NOT EXISTS(SELECT FROM _timescaledb_catalog.chunk ch WHERE ch.id = cc.chunk_id);
