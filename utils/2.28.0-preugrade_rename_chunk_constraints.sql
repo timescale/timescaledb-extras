@@ -81,5 +81,7 @@ BEGIN
 END;
 $$;
 
+set timescaledb.restoring to on;
 CALL pg_temp.rename_chunk_constraints();
+set timescaledb.restoring to off;
 DROP PROCEDURE pg_temp.rename_chunk_constraints;
