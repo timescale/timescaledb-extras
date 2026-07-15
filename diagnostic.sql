@@ -110,20 +110,32 @@ BEGIN
   END IF;
 
 	-- chunk with missing compressed chunk entry
-  SELECT array_agg(format('%I.%I',schema_name,table_name)) INTO v_relnames FROM _timescaledb_catalog.chunk ch1
-  WHERE
-    compressed_chunk_id IS NOT NULL AND
-    NOT EXISTS(SELECT FROM _timescaledb_catalog.chunk ch2 WHERE ch2.id = ch1.compressed_chunk_id);
-  IF v_relnames IS NOT NULL THEN
-    RAISE WARNING 'Found chunks with missing compressed chunk catalog entry: %', v_relnames;
+  IF EXISTS(SELECT FROM pg_attribute WHERE attname='compressed_chunk_id' AND attrelid='_timescaledb_catalog.chunk'::regclass) THEN
+    SELECT array_agg(format('%I.%I',schema_name,table_name)) INTO v_relnames FROM _timescaledb_catalog.chunk ch1
+    WHERE
+      compressed_chunk_id IS NOT NULL AND
+      NOT EXISTS(SELECT FROM _timescaledb_catalog.chunk ch2 WHERE ch2.id = ch1.compressed_chunk_id);
+    IF v_relnames IS NOT NULL THEN
+      RAISE WARNING 'Found chunks with missing compressed chunk catalog entry: %', v_relnames;
+    END IF;
   END IF;
 
-	-- chunk with missing compressed hypertable entry
-  SELECT array_agg(format('%I.%I',schema_name,table_name)) INTO v_relnames FROM _timescaledb_catalog.chunk ch
-  WHERE
-    NOT EXISTS(SELECT FROM _timescaledb_catalog.hypertable ht WHERE ht.id = ch.hypertable_id);
-  IF v_relnames IS NOT NULL THEN
-    RAISE WARNING 'Found chunks with missing hypertable catalog entry: %', v_relnames;
+	-- chunk with missing hypertable entry
+  IF EXISTS(SELECT FROM pg_attribute WHERE attname='table_name' AND attrelid='_timescaledb_catalog.chunk'::regclass) THEN
+    SELECT array_agg(format('%I.%I',schema_name,table_name)) INTO v_relnames FROM _timescaledb_catalog.chunk ch
+    WHERE
+      NOT EXISTS(SELECT FROM _timescaledb_catalog.hypertable ht WHERE ht.id = ch.hypertable_id);
+    IF v_relnames IS NOT NULL THEN
+      RAISE WARNING 'Found chunks with missing hypertable catalog entry: %', v_relnames;
+    END IF;
+  END IF;
+  IF EXISTS(SELECT FROM pg_attribute WHERE attname='relid' AND attrelid='_timescaledb_catalog.chunk'::regclass) THEN
+    SELECT array_agg(relid::text) INTO v_relnames FROM _timescaledb_catalog.chunk ch
+    WHERE
+      NOT EXISTS(SELECT FROM _timescaledb_catalog.hypertable ht WHERE ht.id = ch.hypertable_id);
+    IF v_relnames IS NOT NULL THEN
+      RAISE WARNING 'Found chunks with missing hypertable catalog entry: %', v_relnames;
+    END IF;
   END IF;
 
   -- orphaned foreign key references in _timescaledb_catalog.tablespace
@@ -151,13 +163,11 @@ BEGIN
   END IF;
 
   -- orphaned foreign key references in _timescaledb_catalog.chunk_constraint
-  IF EXISTS(SELECT FROM pg_class WHERE relname='chunk_constraint' AND relkind = 'r' AND relnamespace = '_timescaledb_catalog'::regnamespace) THEN
-    SELECT array_agg(constraint_name) INTO v_relnames FROM _timescaledb_catalog.chunk_constraint cc
-    WHERE
-      NOT EXISTS(SELECT FROM _timescaledb_catalog.chunk ch WHERE ch.id = cc.chunk_id);
-    IF v_relnames IS NOT NULL THEN
-      RAISE WARNING 'Found chunk_constraint entry with missing chunk catalog entry: %', v_relnames;
-    END IF;
+  SELECT array_agg(constraint_name) INTO v_relnames FROM _timescaledb_catalog.chunk_constraint cc
+  WHERE
+    NOT EXISTS(SELECT FROM _timescaledb_catalog.chunk ch WHERE ch.id = cc.chunk_id);
+  IF v_relnames IS NOT NULL THEN
+    RAISE WARNING 'Found chunk_constraint entry with missing chunk catalog entry: %', v_relnames;
   END IF;
 
   -- orphaned foreign key references in _timescaledb_catalog.chunk_constraint
@@ -496,48 +506,94 @@ DECLARE
 BEGIN
   SET LOCAL search_path TO pg_catalog, pg_temp;
 
-  FOR v_hypertable_id, v_hypertable IN SELECT id, format('%I.%I',schema_name, table_name)::regclass FROM _timescaledb_catalog.hypertable WHERE compressed_hypertable_id IS NOT NULL
-  LOOP
-    v_chunks_total := 0;
-    v_chunks_sub100 := 0;
-
-    RAISE NOTICE 'Checking hypertable %', v_hypertable;
-    FOR v_chunk, v_compressed_chunk IN
-      SELECT
-        format('%I.%I',ch.schema_name, ch.table_name) chunk,
-        format('%I.%I',ch2.schema_name, ch2.table_name) compressed
-      FROM _timescaledb_catalog.chunk ch
-      JOIN pg_class c_ch ON c_ch.relname = ch.table_name AND c_ch.relnamespace = ch.schema_name::regnamespace
-      JOIN _timescaledb_catalog.chunk ch2 ON ch2.id = ch.compressed_chunk_id
-      JOIN pg_class c_ch2 ON c_ch2.relname = ch2.table_name AND c_ch2.relnamespace = ch2.schema_name::regnamespace
-      WHERE ch.hypertable_id = v_hypertable_id
+  -- pre 2.29.0
+  IF EXISTS (SELECT FROM pg_attribute WHERE attrelid = '_timescaledb_catalog.hypertable'::regclass AND attname = 'compressed_hypertable_id') THEN
+    FOR v_hypertable_id, v_hypertable IN SELECT id, format('%I.%I',schema_name, table_name)::regclass FROM _timescaledb_catalog.hypertable WHERE compressed_hypertable_id IS NOT NULL
     LOOP
-      RAISE DEBUG '  Checking chunk: %', v_chunk;
-      v_chunks_total := v_chunks_total + 1;
+      v_chunks_total := 0;
+      v_chunks_sub100 := 0;
 
-      -- check if batch has more than 20% of batches with less than 100 tuples
-      EXECUTE format('
+      RAISE NOTICE 'Checking hypertable %', v_hypertable;
+      FOR v_chunk, v_compressed_chunk IN
         SELECT
-          count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100) batch_sub100,
-          avg(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100) batch_sub100_avg,
-          (count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100)/count(_ts_meta_count)::float) * 100 batch_sub100_pct,
-          count(_ts_meta_count) batch_total
-        FROM %s HAVING (count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100)/count(_ts_meta_count)::float) > 0.2;
-      ', v_compressed_chunk) INTO v_batch_sub100, v_batch_sub100_avg, v_batch_sub100_pct, v_batch_total;
+          format('%I.%I',ch.schema_name, ch.table_name) chunk,
+          format('%I.%I',ch2.schema_name, ch2.table_name) compressed
+        FROM _timescaledb_catalog.chunk ch
+        JOIN pg_class c_ch ON c_ch.relname = ch.table_name AND c_ch.relnamespace = ch.schema_name::regnamespace
+        JOIN _timescaledb_catalog.chunk ch2 ON ch2.id = ch.compressed_chunk_id
+        JOIN pg_class c_ch2 ON c_ch2.relname = ch2.table_name AND c_ch2.relnamespace = ch2.schema_name::regnamespace
+        WHERE ch.hypertable_id = v_hypertable_id
+      LOOP
+        RAISE DEBUG '  Checking chunk: %', v_chunk;
+        v_chunks_total := v_chunks_total + 1;
 
-      GET DIAGNOSTICS v_returned_rows = ROW_COUNT;
-      IF v_returned_rows > 0 THEN
-        v_chunks_sub100 := v_chunks_sub100 + 1;
-        -- only print first 5 warnings to avoid flooding
-        IF v_chunks_sub100 <= 5 THEN
-          RAISE WARNING '  Chunk % has %/% (% %% avg %) batches with less than 100 tuples.', v_chunk, v_batch_sub100, v_batch_total, v_batch_sub100_pct::decimal(4,1), v_batch_sub100_avg::decimal(4,1);
+        -- check if batch has more than 20% of batches with less than 100 tuples
+        EXECUTE format('
+          SELECT
+            count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100) batch_sub100,
+            avg(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100) batch_sub100_avg,
+            (count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100)/count(_ts_meta_count)::float) * 100 batch_sub100_pct,
+            count(_ts_meta_count) batch_total
+          FROM %s HAVING (count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100)/count(_ts_meta_count)::float) > 0.2;
+        ', v_compressed_chunk) INTO v_batch_sub100, v_batch_sub100_avg, v_batch_sub100_pct, v_batch_total;
+
+        GET DIAGNOSTICS v_returned_rows = ROW_COUNT;
+        IF v_returned_rows > 0 THEN
+          v_chunks_sub100 := v_chunks_sub100 + 1;
+          -- only print first 5 warnings to avoid flooding
+          IF v_chunks_sub100 <= 5 THEN
+            RAISE WARNING '  Chunk % has %/% (% %% avg %) batches with less than 100 tuples.', v_chunk, v_batch_sub100, v_batch_total, v_batch_sub100_pct::decimal(4,1), v_batch_sub100_avg::decimal(4,1);
+          END IF;
         END IF;
+      END LOOP;
+      IF v_chunks_sub100 > 0 THEN
+        RAISE WARNING '%/% chunks found with more than 20%% of batches having less than 100 tuples in %.', v_chunks_sub100, v_chunks_total, v_hypertable;
       END IF;
     END LOOP;
-    IF v_chunks_sub100 > 0 THEN
-      RAISE WARNING '%/% chunks found with more than 20%% of batches having less than 100 tuples in %.', v_chunks_sub100, v_chunks_total, v_hypertable;
-    END IF;
-  END LOOP;
+  END IF;
+
+  -- 2.29.0 and later
+  IF NOT EXISTS (SELECT FROM pg_attribute WHERE attrelid = '_timescaledb_catalog.hypertable'::regclass AND attname = 'compressed_hypertable_id') THEN
+    FOR v_hypertable_id, v_hypertable IN SELECT id, format('%I.%I',schema_name, table_name)::regclass FROM _timescaledb_catalog.hypertable WHERE status & 4 = 4
+    LOOP
+      v_chunks_total := 0;
+      v_chunks_sub100 := 0;
+
+      RAISE NOTICE 'Checking hypertable %', v_hypertable;
+      FOR v_chunk, v_compressed_chunk IN
+        SELECT
+          ch.relid, cs.compress_relid
+        FROM _timescaledb_catalog.chunk ch
+        JOIN compression_settings cs ON cs.relid = ch.relid
+        WHERE ch.hypertable_id = v_hypertable_id
+      LOOP
+        RAISE DEBUG '  Checking chunk: %', v_chunk;
+        v_chunks_total := v_chunks_total + 1;
+
+        -- check if batch has more than 20% of batches with less than 100 tuples
+        EXECUTE format('
+          SELECT
+            count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100) batch_sub100,
+            avg(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100) batch_sub100_avg,
+            (count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100)/count(_ts_meta_count)::float) * 100 batch_sub100_pct,
+            count(_ts_meta_count) batch_total
+          FROM %s HAVING (count(_ts_meta_count) FILTER (WHERE _ts_meta_count < 100)/count(_ts_meta_count)::float) > 0.2;
+        ', v_compressed_chunk) INTO v_batch_sub100, v_batch_sub100_avg, v_batch_sub100_pct, v_batch_total;
+
+        GET DIAGNOSTICS v_returned_rows = ROW_COUNT;
+        IF v_returned_rows > 0 THEN
+          v_chunks_sub100 := v_chunks_sub100 + 1;
+          -- only print first 5 warnings to avoid flooding
+          IF v_chunks_sub100 <= 5 THEN
+            RAISE WARNING '  Chunk % has %/% (% %% avg %) batches with less than 100 tuples.', v_chunk, v_batch_sub100, v_batch_total, v_batch_sub100_pct::decimal(4,1), v_batch_sub100_avg::decimal(4,1);
+          END IF;
+        END IF;
+      END LOOP;
+      IF v_chunks_sub100 > 0 THEN
+        RAISE WARNING '%/% chunks found with more than 20%% of batches having less than 100 tuples in %.', v_chunks_sub100, v_chunks_total, v_hypertable;
+      END IF;
+    END LOOP;
+  END IF;
 END
 $$;
 
