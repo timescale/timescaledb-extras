@@ -286,14 +286,22 @@ BEGIN
 
   -- chunks with missing relations
   -- finds chunks that have an entry in our catalog but the actual table is missing
-  v_query := $sql$
-    SELECT count(*), array_agg(format('%I.%I',ch.schema_name,ch.table_name))
-    FROM _timescaledb_catalog.chunk ch WHERE
-      NOT EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid WHERE c.relname=ch.table_name AND n.nspname = ch.schema_name)
-  $sql$;
-  PERFORM FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid AND c.relnamespace='_timescaledb_catalog'::regnamespace AND c.relname = 'chunk' WHERE a.attname = 'dropped';
-  IF FOUND THEN
-    v_query := v_query || ' AND NOT ch.dropped';
+  IF EXISTS(SELECT FROM pg_attribute WHERE attname='table_name' AND attrelid='_timescaledb_catalog.chunk'::regclass) THEN
+    v_query := $sql$
+      SELECT count(*), array_agg(format('%I.%I',ch.schema_name,ch.table_name))
+      FROM _timescaledb_catalog.chunk ch WHERE
+        NOT EXISTS (SELECT FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid WHERE c.relname=ch.table_name AND n.nspname = ch.schema_name)
+    $sql$;
+    PERFORM FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid AND c.relnamespace='_timescaledb_catalog'::regnamespace AND c.relname = 'chunk' WHERE a.attname = 'dropped';
+    IF FOUND THEN
+      v_query := v_query || ' AND NOT ch.dropped';
+    END IF;
+  ELSE
+    v_query := $sql$
+      SELECT count(*), array_agg(ch.relid::text)
+      FROM _timescaledb_catalog.chunk ch WHERE
+        NOT EXISTS (SELECT FROM pg_class c WHERE c.oid=ch.relid)
+    $sql$;
   END IF;
 
   EXECUTE v_query INTO v_count, v_relnames;
