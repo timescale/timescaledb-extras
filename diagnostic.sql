@@ -322,39 +322,43 @@ BEGIN
   END IF;
 
   -- orphaned chunks
-  SELECT count(*), array_agg(oid::regclass) INTO v_count, v_rels
-  FROM pg_class
-  WHERE
-    relnamespace='_timescaledb_internal'::regnamespace AND
-    relkind='r' AND
-    relname LIKE '%_chunk' AND
-    NOT EXISTS(SELECT FROM _timescaledb_catalog.chunk where schema_name='_timescaledb_internal' and table_name = relname);
-  IF v_count > 0 THEN
-    RAISE WARNING 'Found % orphaned chunk relations: %', v_count, v_rels[1:20];
+  IF EXISTS(SELECT FROM pg_attribute WHERE attname='table_name' AND attrelid='_timescaledb_catalog.chunk'::regclass) THEN
+    SELECT count(*), array_agg(oid::regclass) INTO v_count, v_rels
+    FROM pg_class
+    WHERE
+      relnamespace='_timescaledb_internal'::regnamespace AND
+      relkind='r' AND
+      relname LIKE '%_chunk' AND
+      NOT EXISTS(SELECT FROM _timescaledb_catalog.chunk where schema_name='_timescaledb_internal' and table_name = relname);
+    IF v_count > 0 THEN
+      RAISE WARNING 'Found % orphaned chunk relations: %', v_count, v_rels[1:20];
+    END IF;
   END IF;
 
   -- unique indexes defined on the hypertable that are not present on all chunks
-  FOR v_hypertable, v_index, v_rels IN
-    SELECT c.oid::regclass hypertable, ht_i.indexrelid::regclass, array_agg(c_ch.oid::regclass)
-    FROM _timescaledb_catalog.hypertable ht
-    JOIN pg_class c ON c.relname=ht.table_name
-    JOIN pg_namespace nsp ON c.relnamespace=nsp.oid AND nsp.nspname=ht.schema_name
-    JOIN pg_index ht_i ON ht_i.indrelid=c.oid AND ht_i.indisunique
-    JOIN _timescaledb_catalog.chunk ch ON ch.hypertable_id=ht.id
-    JOIN pg_class c_ch ON c_ch.relname=ch.table_name
-    JOIN pg_namespace nsp_ch ON c_ch.relnamespace=nsp_ch.oid
-    WHERE
-      NOT EXISTS(
-        SELECT FROM pg_index ch_i
-        WHERE
-          ch_i.indrelid=c_ch.oid AND
-          ch_i.indisunique AND
-          ch_i.indisvalid AND
-          (SELECT array_agg(attname ORDER BY attnum) FROM pg_attribute att WHERE att.attrelid=c.oid AND attnum =ANY(ht_i.indkey)) = (SELECT array_agg(attname ORDER BY attnum) FROM pg_attribute att WHERE att.attrelid=c_ch.oid AND attnum =ANY(ch_i.indkey)))
-    GROUP BY c.oid, ht_i.indexrelid
-  LOOP
-    RAISE WARNING 'Hypertable % unique index % missing on chunks %', v_hypertable, v_index, v_rels[1:20];
-  END LOOP;
+  IF EXISTS(SELECT FROM pg_attribute WHERE attname='table_name' AND attrelid='_timescaledb_catalog.chunk'::regclass) THEN
+    FOR v_hypertable, v_index, v_rels IN
+      SELECT c.oid::regclass hypertable, ht_i.indexrelid::regclass, array_agg(c_ch.oid::regclass)
+      FROM _timescaledb_catalog.hypertable ht
+      JOIN pg_class c ON c.relname=ht.table_name
+      JOIN pg_namespace nsp ON c.relnamespace=nsp.oid AND nsp.nspname=ht.schema_name
+      JOIN pg_index ht_i ON ht_i.indrelid=c.oid AND ht_i.indisunique
+      JOIN _timescaledb_catalog.chunk ch ON ch.hypertable_id=ht.id
+      JOIN pg_class c_ch ON c_ch.relname=ch.table_name
+      JOIN pg_namespace nsp_ch ON c_ch.relnamespace=nsp_ch.oid
+      WHERE
+        NOT EXISTS(
+          SELECT FROM pg_index ch_i
+          WHERE
+            ch_i.indrelid=c_ch.oid AND
+            ch_i.indisunique AND
+            ch_i.indisvalid AND
+            (SELECT array_agg(attname ORDER BY attnum) FROM pg_attribute att WHERE att.attrelid=c.oid AND attnum =ANY(ht_i.indkey)) = (SELECT array_agg(attname ORDER BY attnum) FROM pg_attribute att WHERE att.attrelid=c_ch.oid AND attnum =ANY(ch_i.indkey)))
+      GROUP BY c.oid, ht_i.indexrelid
+    LOOP
+      RAISE WARNING 'Hypertable % unique index % missing on chunks %', v_hypertable, v_index, v_rels[1:20];
+    END LOOP;
+  END IF;
 
 END
 $$;
