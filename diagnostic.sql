@@ -23,6 +23,7 @@
 --   - job failures
 -- - compression
 --   - compressed batch sizes
+--   - composite bloom filter columns not matching compression settings
 -- - continuous aggregates
 --   - continuous aggregate large materialization ranges
 --   - hypertables with invalidation threshold in the future
@@ -605,6 +606,66 @@ BEGIN
         RAISE WARNING '%/% chunks found with more than 20%% of batches having less than 100 tuples in %.', v_chunks_sub100, v_chunks_total, v_hypertable;
       END IF;
     END LOOP;
+  END IF;
+END
+$$;
+
+-- composite bloom filter columns not matching compression settings
+-- Renaming a column used in a composite bloom filter could leave the bloom
+-- column in the compressed chunk under its old name. The bloom filter is then
+-- ignored, or used for a different column and returns wrong results.
+-- Composite bloom columns created before 2.27.0 also use an older naming scheme
+-- that later versions no longer find. Recompressing the chunk fixes both.
+DO $$
+DECLARE
+  v_version int[];
+  v_prefix text;
+  v_count int8;
+  v_chunks regclass[];
+BEGIN
+  SET LOCAL search_path TO pg_catalog, pg_temp;
+
+  v_version := string_to_array(split_part((SELECT extversion FROM pg_extension WHERE extname='timescaledb'), '-', 1), '.')::int[];
+  v_prefix := current_setting('timescaledb.bloom1_column_prefix', true);
+
+  -- composite bloom filters were added in 2.26.0
+  IF v_version >= '{2,26,0}' AND v_prefix IS NOT NULL THEN
+    SELECT count(DISTINCT relid), array_agg(DISTINCT relid) INTO v_count, v_chunks
+    FROM (
+      SELECT s.relid
+      FROM _timescaledb_catalog.compression_settings s,
+           jsonb_array_elements(s.index) e,
+           LATERAL (
+             SELECT
+               string_agg(c, '_' ORDER BY i) AS joined,
+               string_agg(convert_to(c, current_setting('server_encoding')), '\x00'::bytea ORDER BY i) AS hash_input
+             FROM jsonb_array_elements_text(e->'column') WITH ORDINALITY AS x(c, i)
+           ) n,
+           LATERAL (
+             SELECT CASE
+               WHEN v_version >= '{2,27,0}' THEN
+                 format('_ts_meta_v2_%s_%s_%s', left(v_prefix, 6), left(md5(n.hash_input), 4), left(n.joined, 39))
+               WHEN length(n.joined) > 39 THEN
+                 format('_ts_meta_v2_%s_%s_%s', left(v_prefix, 6), left(md5(n.joined), 4), left(n.joined, 39))
+               ELSE
+                 format('_ts_meta_v2_%s_%s', left(v_prefix, 6), n.joined)
+             END AS expected_column
+           ) m
+      WHERE
+        s.compress_relid IS NOT NULL AND
+        e->>'type' = 'bloom' AND
+        jsonb_typeof(e->'column') = 'array' AND
+        -- OFFSET 0 keeps this a per-row index lookup instead of a join over all of pg_attribute
+        NOT EXISTS(
+          SELECT FROM pg_attribute a
+          WHERE a.attrelid = s.compress_relid AND a.attname = m.expected_column::name AND NOT a.attisdropped
+          OFFSET 0)
+    ) broken;
+
+    IF v_count > 0 THEN
+      RAISE WARNING 'Found % compressed chunks with composite bloom filter columns not matching their compression settings: %', v_count, v_chunks[1:20];
+      RAISE WARNING '  Recompress these chunks to rebuild the bloom filters.';
+    END IF;
   END IF;
 END
 $$;
